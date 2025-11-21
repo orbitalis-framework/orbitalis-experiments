@@ -43,7 +43,7 @@ class TestLocalCoordinator(unittest.TestCase):
         coordinator.execute_distributed_computation(10, 50)
 
         while not coordinator.done:
-            sleep(0.1)
+            sleep(0)
             
         self.assertIsNotNone(coordinator.last_result)
 
