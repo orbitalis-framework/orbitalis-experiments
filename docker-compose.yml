@@ -1,0 +1,84 @@
+services:
+  emqx:
+    image: emqx/emqx:latest
+    ports:
+      - "1883:1883"
+      - "8083:8083"
+      - "8084:8084"
+      - "18083:18083"
+    container_name: emqx
+    healthcheck:
+      test: ["CMD", "emqx_ctl", "status"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    ports:
+      - "8080:8080"
+    privileged: true
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    container_name: cadvisor
+
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro,Z
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9090/-/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    container_name: prometheus
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    depends_on:
+      - prometheus
+
+  experiment:
+    container_name: experiment
+    depends_on:
+      - cadvisor
+      - prometheus
+      - grafana
+      - emqx
+    volumes:
+      - ./src:/workspace/src:Z
+      - ./main.py:/workspace/main.py:Z
+    environment:
+      - PYTHONPATH=/workspace/src
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command:
+      [
+        "--container-name", "experiment",
+        "--workers", "4",
+        "--prometheus-host", "prometheus",
+        "--prometheus-port", "9090",
+        "--primes", "10000",
+        "--iterations", "100",
+        "--scenario", "local"
+      ]
