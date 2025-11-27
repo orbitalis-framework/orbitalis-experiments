@@ -1,7 +1,7 @@
-import requests
 from dataclasses import dataclass
-from typing import Optional
-from datetime import datetime
+from typing import List
+import requests
+from datetime import datetime, timedelta, timezone
 
 
 @dataclass
@@ -18,134 +18,122 @@ class ContainerMetrics:
 
 
 class PrometheusMeter:
-    """
-    A client that queries Prometheus for container metrics within a time range.
-    All methods receive:
-        - container_name
-        - start_time (datetime)
-        - end_time (datetime)
-    """
 
-    def __init__(self, host, port=9090):
-        self.base_url = f"http://{host}:{port}/api/v1/query_range"
+    def __init__(self, base_url: str):
+        self.base_url = base_url.rstrip("/")
 
-    # --------------------------
-    # INTERNAL UTILITIES
-    # --------------------------
+    # ----------------------------------------------------------------------
 
-    def _query_range(self, query: str, start: datetime, end: datetime, step: str = "1s"):
-        params = {
-            "query": query,
-            "start": start.timestamp(),
-            "end": end.timestamp(),
-            "step": step,
-        }
-        response = requests.get(self.base_url, params=params)
-        response.raise_for_status()
-        data = response.json()
+    def _compute_range(self, lookback_seconds: int) -> tuple[str, str]:
+        """
+        Compute RFC3339 timestamps for the Prometheus range query.
+        """
+        end = datetime.now(timezone.utc)
+        start = end - timedelta(seconds=lookback_seconds)
+        return start.isoformat(), end.isoformat()
 
-        if data["status"] != "success":
-            raise RuntimeError("Prometheus query failed:", data)
+    def _query_range(self, query: str, lookback_seconds: int, step: str = "30s"):
+        start, end = self._compute_range(lookback_seconds)
+        url = f"{self.base_url}/api/v1/query_range"
+        params = {"query": query, "start": start, "end": end, "step": step}
+        resp = requests.get(url, params=params)
+        resp.raise_for_status()
+        return resp.json()
 
-        # Return values in the form [(timestamp, value), ...]
-        result = data["data"]["result"]
-        if not result:
+    def _extract_values(self, result: dict) -> List[float]:
+        try:
+            series = result["data"]["result"]
+            if not series:
+                return []
+            return [float(v[1]) for v in series[0]["values"]]
+        except Exception:
             return []
 
-        return [(float(ts), float(value)) for ts, value in result[0]["values"]]
+    # ----------------------- CPU METRICS -----------------------
 
-    def _delta(self, series):
-        """Compute difference between the first and last cumulative metric."""
-        if len(series) < 2:
-            return 0
-        return series[-1][1] - series[0][1]
+    def get_cpu_percent_series(self, container: str, lookback_seconds: int) -> List[float]:
+        query = (
+            f'rate(container_cpu_usage_seconds_total{{name="{container}"}}[1m]) * 100'
+        )
+        data = self._query_range(query, lookback_seconds)
+        return self._extract_values(data)
 
-    # --------------------------
-    # CPU METRICS
-    # --------------------------
+    def get_cpu_percent_avg(self, container: str, lookback_seconds: int) -> float:
+        values = self.get_cpu_percent_series(container, lookback_seconds)
+        return sum(values) / len(values) if values else 0.0
 
-    def cpu_time_seconds(self, container: str, start: datetime, end: datetime) -> float:
-        q = f'rate(container_cpu_usage_seconds_total{{name="{container}"}}[1s])'
-        series = self._query_range(q, start, end)
-        # sum of rates * interval length
-        return sum(v for _, v in series)
+    def get_cpu_percent_max(self, container: str, lookback_seconds: int) -> float:
+        values = self.get_cpu_percent_series(container, lookback_seconds)
+        return max(values) if values else 0.0
 
-    def cpu_percent_avg(self, container: str, start: datetime, end: datetime) -> float:
-        q = f'rate(container_cpu_usage_seconds_total{{name="{container}"}}[1s])'
-        series = self._query_range(q, start, end)
-        return sum(v for _, v in series) / (end - start).total_seconds() * 100
+    def get_cpu_time_seconds(self, container: str, lookback_seconds: int) -> float:
+        # CPU time is a counter, so use increase()
+        query = (
+            f'increase(container_cpu_usage_seconds_total{{name="{container}"}}[{lookback_seconds}s])'
+        )
+        result = self._query_range(query, lookback_seconds)
+        values = self._extract_values(result)
+        return values[-1] if values else 0.0
 
-    def cpu_percent_max(self, container: str, start: datetime, end: datetime) -> float:
-        q = f'rate(container_cpu_usage_seconds_total{{name="{container}"}}[1s])'
-        series = self._query_range(q, start, end)
-        return max((v for _, v in series), default=0) * 100
+    # ----------------------- MEMORY METRICS -----------------------
 
-    # --------------------------
-    # MEMORY METRICS
-    # --------------------------
+    def get_memory_percent_series(self, container: str, lookback_seconds: int) -> List[float]:
+        query = (
+            f'(container_memory_usage_bytes{{name="{container}"}} / '
+            f' container_spec_memory_limit_bytes{{name="{container}"}}) * 100'
+        )
+        data = self._query_range(query, lookback_seconds)
+        return self._extract_values(data)
 
-    def memory_percent_avg(self, container: str, start: datetime, end: datetime) -> float:
-        usage_q = f'container_memory_usage_bytes{{name="{container}"}}'
-        limit_q = f'container_spec_memory_limit_bytes{{name="{container}"}}'
+    def get_memory_percent_avg(self, container: str, lookback_seconds: int) -> float:
+        values = self.get_memory_percent_series(container, lookback_seconds)
+        return sum(values) / len(values) if values else 0.0
 
-        usage_series = self._query_range(usage_q, start, end)
-        limit_series = self._query_range(limit_q, start, end)
+    def get_memory_usage_max_bytes(self, container: str, lookback_seconds: int) -> int:
+        query = f'container_memory_usage_bytes{{name="{container}"}}'
+        data = self._query_range(query, lookback_seconds)
+        values = self._extract_values(data)
+        return int(max(values)) if values else 0
 
-        # No data at all
-        if not usage_series or not limit_series:
-            return 0.0
+    # ----------------------- NETWORK METRICS -----------------------
 
-        limit = limit_series[-1][1]
+    def get_network_series(self, container: str, lookback_seconds: int, direction: str) -> List[float]:
+        metric = "transmit" if direction == "tx" else "receive"
+        query = (
+            f'rate(container_network_{metric}_bytes_total{{name="{container}"}}[1m])'
+        )
+        data = self._query_range(query, lookback_seconds)
+        return self._extract_values(data)
 
-        # Container has no memory limit → avoid division by zero
-        if limit == 0:
-            return 0.0
+    def get_network_tx_avg(self, container: str, lookback_seconds: int) -> float:
+        values = self.get_network_series(container, lookback_seconds, "tx")
+        return sum(values) / len(values) if values else 0.0
 
-        return sum(v for _, v in usage_series) / len(usage_series) / limit * 100
+    def get_network_tx_max(self, container: str, lookback_seconds: int) -> int:
+        values = self.get_network_series(container, lookback_seconds, "tx")
+        return int(max(values)) if values else 0
 
-    def memory_usage_max(self, container: str, start: datetime, end: datetime) -> int:
-        q = f'container_memory_usage_bytes{{name="{container}"}}'
-        series = self._query_range(q, start, end)
-        return int(max((v for _, v in series), default=0))
+    def get_network_rx_avg(self, container: str, lookback_seconds: int) -> float:
+        values = self.get_network_series(container, lookback_seconds, "rx")
+        return sum(values) / len(values) if values else 0.0
 
-    # --------------------------
-    # NETWORK METRICS
-    # --------------------------
+    def get_network_rx_max(self, container: str, lookback_seconds: int) -> int:
+        values = self.get_network_series(container, lookback_seconds, "rx")
+        return int(max(values)) if values else 0
 
-    def network_tx_avg(self, container: str, start: datetime, end: datetime) -> float:
-        q = f'rate(container_network_transmit_bytes_total{{name="{container}"}}[1s])'
-        series = self._query_range(q, start, end)
-        return sum(v for _, v in series) / len(series) if series else 0
+    # ----------------------- AGGREGATOR -----------------------
 
-    def network_tx_max(self, container: str, start: datetime, end: datetime) -> int:
-        q = f'rate(container_network_transmit_bytes_total{{name="{container}"}}[1s])'
-        series = self._query_range(q, start, end)
-        return int(max((v for _, v in series), default=0))
-
-    def network_rx_avg(self, container: str, start: datetime, end: datetime) -> float:
-        q = f'rate(container_network_receive_bytes_total{{name="{container}"}}[1s])'
-        series = self._query_range(q, start, end)
-        return sum(v for _, v in series) / len(series) if series else 0
-
-    def network_rx_max(self, container: str, start: datetime, end: datetime) -> int:
-        q = f'rate(container_network_receive_bytes_total{{name="{container}"}}[1s])'
-        series = self._query_range(q, start, end)
-        return int(max((v for _, v in series), default=0))
-
-    # --------------------------
-    # FULL RESULT
-    # --------------------------
-
-    def measure_all(self, container: str, start: datetime, end: datetime) -> ContainerMetrics:
-
+    def get_container_metrics(self, container: str, lookback_seconds: int) -> ContainerMetrics:
         return ContainerMetrics(
-            cpu_percent_avg=self.cpu_percent_avg(container, start, end),
-            cpu_percent_max=self.cpu_percent_max(container, start, end),
-            cpu_time_seconds=self.cpu_time_seconds(container, start, end),
-            memory_percent_avg=self.memory_percent_avg(container, start, end),
-            memory_usage_max_bytes=self.memory_usage_max(container, start, end),
-            network_tx_avg=self.network_tx_avg(container, start, end),
-            network_tx_max=self.network_tx_max(container, start, end),
-            network_rx_avg=self.network_rx_avg(container, start, end),
-            network_rx_max=self.network_rx_max(container, start, end)
+            cpu_percent_avg=self.get_cpu_percent_avg(container, lookback_seconds),
+            cpu_percent_max=self.get_cpu_percent_max(container, lookback_seconds),
+            cpu_time_seconds=self.get_cpu_time_seconds(container, lookback_seconds),
+
+            memory_percent_avg=self.get_memory_percent_avg(container, lookback_seconds),
+            memory_usage_max_bytes=self.get_memory_usage_max_bytes(container, lookback_seconds),
+
+            network_tx_avg=self.get_network_tx_avg(container, lookback_seconds),
+            network_tx_max=self.get_network_tx_max(container, lookback_seconds),
+            network_rx_avg=self.get_network_rx_avg(container, lookback_seconds),
+            network_rx_max=self.get_network_rx_max(container, lookback_seconds),
         )

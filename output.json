@@ -1,0 +1,18 @@
+{
+    "n_workers": 4,
+    "n_primes": 10000,
+    "n_iterations": 200,
+    "scenario": "local",
+    "outcome": {
+        "cpu_percent_avg": 47.18272626416219,
+        "cpu_percent_max": 47.189387993440675,
+        "cpu_time_seconds": 28.314632055456173,
+        "memory_percent_avg": 4.22210693359375,
+        "memory_usage_max_bytes": 22667264,
+        "network_tx_avg": 0.0,
+        "network_tx_max": 0,
+        "network_rx_avg": 24.30004823038339,
+        "network_rx_max": 24,
+        "total_time_in_seconds": 45.659934
+    }
+}
