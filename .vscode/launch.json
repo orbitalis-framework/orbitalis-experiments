@@ -1,6 +1,28 @@
 {
     "configurations": [
         {
+            "name": "Python Debugger: main",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/main.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--container-name", "experiment",
+                "--workers", "4",
+                "--prometheus-host", "prometheus",
+                "--prometheus-port", "9090",
+                "--primes", "10000",
+                "--iterations", "200",
+                "--scenario", "mqtt",
+                "--output-path", "/workspace/output.json",
+                "--mqtt-broker-host", "127.0.0.1",
+                "--mqtt-broker-port", "1883"
+            ],
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}/src"
+            }
+        },
+        {
             "name": "Python Debugger: Current File",
             "type": "debugpy",
             "request": "launch",

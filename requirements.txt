@@ -1,3 +1,4 @@
 orbitalis
-paho-mqtt
+aiomqtt
 requests
+tqdm

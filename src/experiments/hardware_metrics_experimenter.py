@@ -102,7 +102,6 @@ class HardwareMetricsExperimenterPrimeNumbers(HardwareMetricsExperimenter):
     async def run_experiment(self):
         await self.coordinator.execute_distributed_computation(self.primes_range_start, self.primes_range_end)
         await self.coordinator.done_event.wait()
-        print(f"Found {len(self.coordinator.last_result)} prime numbers.", flush=True)
         self.coordinator.reset()
 
 

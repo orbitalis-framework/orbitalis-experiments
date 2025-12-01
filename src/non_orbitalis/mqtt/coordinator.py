@@ -1,62 +1,65 @@
 from typing import List, override
 from dataclasses import dataclass, field
-import paho.mqtt.client as mqtt
+import aiomqtt
 import asyncio
 
 from common.coordinator import Coordinator
-from non_orbitalis.mqtt.base import BaseMqtt
 
 @dataclass
-class MqttCoordinator(BaseMqtt, Coordinator):
+class MqttCoordinator(Coordinator):
     worker_input_topics: List[str]
     worker_output_topic: str
-    _n_result_received: int = field(default=0, kw_only=True)
+    broker_host: str
+    broker_port: int
+    _n_result_received: int = field(default=0, init=False)
 
-    def __post_init__(self):
-        self.client.on_message = self._on_message
-        self.client.subscribe(self.worker_output_topic)
-        self.reset()
-
-    @override
     def reset(self) -> None:
         super().reset()
         self._n_result_received = 0
 
-    def _on_message(self, client, userdata, message):
-        if self.last_result is None:
-            raise RuntimeError("No computation in progress")
-        
-        self.last_result.extend([
-            int(n)
-            for n in message.payload.decode().split(",")    # expected: a,b,c,d,...
-        ])
+    async def _message_listener(self, client: aiomqtt.Client):
+        async for message in client.messages:
+            payload = message.payload.decode()
+            partial_results = payload.split(",")
+            
+            if self.last_result is not None:
+                self.last_result.extend(partial_results)
+            
+            self._n_result_received += 1
 
-        self._n_result_received += 1
-        if self._n_result_received == len(self.worker_input_topics):
-            self.done_event.set()
+            if self._n_result_received == len(self.worker_input_topics):
+                self.done_event.set()
+                return
 
     @override
-    async def execute_distributed_computation(self, start: int, end: int):
-
-        if self.last_result is not None:
-            raise RuntimeError("Computation already in progress")
-
+    async def execute_distributed_computation(self, start: int, end: int) -> None:
         self.reset()
         self.last_result = []
-        self.done_event.clear()
+        
+        async with aiomqtt.Client(self.broker_host, self.broker_port) as client:
+            
+            listener_task = asyncio.create_task(self._message_listener(client))
+            await client.subscribe(self.worker_output_topic)
 
-        range_size = (end - start + 1) // len(self.worker_input_topics)
+            range_size = (end - start + 1) // len(self.worker_input_topics)
 
-        for worker_topic in self.worker_input_topics:
-            worker_start = start
-            worker_end = start + range_size - 1
+            for worker_topic in self.worker_input_topics:
+                worker_start = start
+                worker_end = start + range_size - 1
 
-            if worker_topic == self.worker_input_topics[-1]:
-                worker_end = end
+                if worker_topic == self.worker_input_topics[-1]:
+                    worker_end = end
 
-            self.client.publish(
-                worker_topic,
-                f"{worker_start},{worker_end},{self.worker_output_topic}"
-            )
+                await client.publish(
+                    worker_topic,
+                    f"{worker_start},{worker_end},{self.worker_output_topic}"
+                )
 
-            start += range_size
+                start += range_size
+
+            # Wait for the listener to signal completion
+            await self.done_event.wait()
+            
+            # 4. Cleanup: Cancel the listener if it hasn't finished already
+            if not listener_task.done():
+                listener_task.cancel()

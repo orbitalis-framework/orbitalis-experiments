@@ -1,12 +1,12 @@
 services:
-  emqx:
+  mqttbroker:
     image: emqx/emqx:latest
     ports:
       - "1883:1883"
       - "8083:8083"
       - "8084:8084"
       - "18083:18083"
-    container_name: brokermqtt
+    container_name: mqttbroker
     healthcheck:
       test: ["CMD", "emqx_ctl", "status"]
       interval: 30s
@@ -76,14 +76,15 @@ services:
     command:
       [
         "--container-name", "experiment",
-        "--workers", "4",
+        "--workers", "${NUM_WORKERS}",
         "--prometheus-host", "prometheus",
         "--prometheus-port", "9090",
-        "--emqx-host", "brokermqtt",
-        "--primes", "10000",
-        "--iterations", "200",
-        "--scenario", "mqtt",
-        "--output-path", "/workspace/output"
+        "--mqtt-broker-host", "mqttbroker",
+        "--mqtt-broker-port", "1883",
+        "--primes", "${PRIMES}",
+        "--iterations", "${ITERATIONS}",
+        "--scenario", "${SCENARIO}",
+        "--output-path", "/workspace/output/${OUTPUT_FILE_NAME}"
       ]
     deploy:
       resources:

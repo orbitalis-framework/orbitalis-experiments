@@ -52,10 +52,17 @@ def get_cli_parser():
     )
 
     parser.add_argument(
-        "--emqx-host",
+        "--mqtt-broker-host",
         type=str,
         required=True,
-        help="EMQX MQTT broker host."
+        help="MQTT broker host."
+    )
+
+    parser.add_argument(
+        "--mqtt-broker-port",
+        type=int,
+        required=True,
+        help="MQTT broker port."
     )
 
     parser.add_argument(
@@ -139,35 +146,28 @@ async def non_orbitalis_local(meter: PrometheusMeter, n_workers: int, n_primes: 
     return experiment_outcome
 
 
-async def non_orbitalis_mqtt(meter: PrometheusMeter, n_workers: int, n_primes: int, n_iterations: int,
-               container_name: str, emqx_hostname: str) -> HardwareMetricsExperimentOutcome:
-    worker_clients = [
-        mqtt.Client(client_id=f"worker_{i}") for i in range(n_workers)
-    ]
-
-    coordinator_client = mqtt.Client(client_id="coordinator")
-
-    # Connect and start all clients to the MQTT broker
-    coordinator_client.connect(emqx_hostname, 1883, 60)
-    coordinator_client.loop_start()
-
-    for worker_client in worker_clients:
-        worker_client.connect(emqx_hostname, 1883, 60)
-        worker_client.loop_start()
-
+async def non_orbitalis_mqtt(meter: PrometheusMeter, n_workers: int, n_primes: int, n_iterations: int, container_name: str, mqtt_broker_host: str, mqtt_broker_port: int) -> HardwareMetricsExperimentOutcome:
+    
     # Set up the workers
     workers = [
         MqttWorker(
-            client=worker_client,
+            input_topic=f"worker/input/{i}",
+            broker_host=mqtt_broker_host,
+            broker_port=mqtt_broker_port
         )
-        for worker_client in worker_clients
+        for i in range(n_workers)
     ]
+
+    worker_run_tasks = []
+    for worker in workers:
+        worker_run_tasks.append(asyncio.create_task(worker.run()))
 
     # Set up the coordinator
     coordinator = MqttCoordinator(
-        client=coordinator_client,
         worker_input_topics=[worker.input_topic for worker in workers],
-        worker_output_topic="coordinator/output"
+        worker_output_topic="coordinator/output",
+        broker_host=mqtt_broker_host,
+        broker_port=mqtt_broker_port
     )
 
     experimenter = HardwareMetricsExperimenterPrimeNumbers(
@@ -179,6 +179,9 @@ async def non_orbitalis_mqtt(meter: PrometheusMeter, n_workers: int, n_primes: i
     )
 
     experiment_outcome = await experimenter.run_experiments(n_iterations=n_iterations)
+
+    for task in worker_run_tasks:
+        task.cancel()
 
     return experiment_outcome
 
@@ -294,7 +297,8 @@ async def main():
             n_primes=args.primes,
             n_iterations=args.iterations,
             container_name=args.container_name,
-            emqx_hostname=args.emqx_host
+            mqtt_broker_host=args.mqtt_broker_host,
+            mqtt_broker_port=args.mqtt_broker_port
         )
 
     elif args.scenario == "orbitalis-local":
