@@ -22,7 +22,7 @@ class MqttWorker(PrimeNumberComputerWorker):
                 start = int(start_str)
                 end = int(end_str)
 
-                primes = compute_prime_numbers_in_range(start, end)
+                primes = self.compute(start, end)
                 primes_str = ",".join(map(str, primes))
 
                 await client.publish(response_topic, primes_str)

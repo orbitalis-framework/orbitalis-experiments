@@ -63,11 +63,11 @@ services:
       - cadvisor
       - prometheus
       - grafana
-      - emqx
+      - mqttbroker
     volumes:
       - ./src:/workspace/src:Z
       - ./main.py:/workspace/main.py:Z
-      - ./output:/workspace/output
+      - ./output:/workspace/output:Z
     environment:
       - PYTHONPATH=/workspace/src
     build:

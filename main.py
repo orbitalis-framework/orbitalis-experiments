@@ -27,9 +27,9 @@ def build_new_local_client() -> PubSubClient:
         LocalPublisher(eventbus=LocalEventBus())).build()
 
 
-def build_new_mqtt_client(hostname: str) -> PubSubClient:
-    return PubSubClientBuilder().with_subscriber(MqttSubscriber(hostname=hostname)).with_publisher(
-        MqttPublisher(hostname=hostname)).build()
+def build_new_mqtt_client(hostname: str, port: int) -> PubSubClient:
+    return PubSubClientBuilder().with_subscriber(MqttSubscriber(hostname=hostname, port=port)).with_publisher(
+        MqttPublisher(hostname=hostname, port=port)).build()
 
 
 def get_cli_parser():
@@ -121,7 +121,7 @@ def dump_experiment(n_workers: int, n_primes: int, n_iterations: int, scenario: 
         "outcome": outcome.to_dict()
     }
 
-    with open(output_path + "/output.json", "w") as f:
+    with open(output_path, "w") as f:
         json.dump(experiment, f, indent=4)
 
 
@@ -229,13 +229,13 @@ async def orbitalis_local(meter: PrometheusMeter, n_workers: int, n_primes: int,
 
 
 async def orbitalis_mqtt(meter: PrometheusMeter, n_workers: int, n_primes: int, n_iterations: int,
-                         container_name: str, emqx_hostname: str) -> HardwareMetricsExperimentOutcome:
+                         container_name: str, mqtt_broker_host: str, mqtt_broker_port: int) -> HardwareMetricsExperimentOutcome:
     workers = [
-        OrbitalisWorker(identifier=f"worker_{i}", eventbus_client=build_new_mqtt_client(emqx_hostname), raise_exceptions=True,
+        OrbitalisWorker(identifier=f"worker_{i}", eventbus_client=build_new_mqtt_client(mqtt_broker_host, mqtt_broker_port), raise_exceptions=True,
                         with_loop=False) for i in range(n_workers)
     ]
 
-    coordinator = OrbitalisCoordinator(eventbus_client=build_new_mqtt_client(emqx_hostname), with_loop=False, raise_exceptions=True,
+    coordinator = OrbitalisCoordinator(eventbus_client=build_new_mqtt_client(mqtt_broker_host, mqtt_broker_port), with_loop=False, raise_exceptions=True,
                                        operation_requirements={
                                            "calculate_prime_numbers": OperationRequirement(Constraint(
                                                inputs=[Input.from_schema(RangeMessage.avro_schema())],
@@ -317,7 +317,8 @@ async def main():
             n_primes=args.primes,
             n_iterations=args.iterations,
             container_name=args.container_name,
-            emqx_hostname=args.emqx_host
+            mqtt_broker_host=args.mqtt_broker_host,
+            mqtt_broker_port=args.mqtt_broker_port
         )
 
     else:
@@ -334,5 +335,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    time.sleep(10)  # Wait for dependent services to be up (emqx)
     asyncio.run(main())
