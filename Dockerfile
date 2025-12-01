@@ -4,7 +4,9 @@ WORKDIR /workspace
 
 COPY requirements.txt /workspace/
 
-RUN pip install --upgrade pip && \
+RUN apt-get update && \
+    apt-get install -y tk tk-dev && \
+    pip install --upgrade pip && \
     pip install -r /workspace/requirements.txt
 
 ENTRYPOINT ["python", "main.py"]

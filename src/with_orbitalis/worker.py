@@ -8,6 +8,8 @@ from orbitalis.plugin.plugin import Plugin
 from busline.event.event import Event
 
 from common.computation.prime_number import compute_prime_numbers_in_range
+from common.computation.worker import PrimeNumberComputerWorker
+from common.worker import Worker
 
 
 @dataclass
@@ -22,8 +24,7 @@ class PrimeNumbersMessage(AvroMessageMixin):
 
 
 @dataclass
-class MqttWorker(Plugin):
-    identifier: str
+class OrbitalisWorker(Plugin, PrimeNumberComputerWorker):
 
     @operation(
         # operation name
@@ -35,7 +36,7 @@ class MqttWorker(Plugin):
         # operation doesn't send any output
         output=Output.from_message(PrimeNumbersMessage)
     )
-    async def calculate_prime_numbers_event_handler(self, topic: str, event: Event[...]):
+    async def calculate_prime_numbers_event_handler(self, topic: str, event: Event[RangeMessage]):
         connections = await self._retrieve_and_touch_connections(input_topic=topic,
                                                                  operation_name="calculate_prime_numbers")
 
@@ -51,7 +52,8 @@ class MqttWorker(Plugin):
         async with connection.lock:
             connection.touch()
 
-        prime_numbers = compute_prime_numbers_in_range(event.payload.first_number, event.payload.second_number)
+        # Compute prime numbers in the given range
+        prime_numbers = self.compute(event.payload.first_number, event.payload.second_number)
 
         # Send output to core
         await self.eventbus_client.publish(

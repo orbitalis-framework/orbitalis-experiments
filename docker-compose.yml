@@ -67,7 +67,7 @@ services:
     volumes:
       - ./src:/workspace/src:Z
       - ./main.py:/workspace/main.py:Z
-      - ./output.json:/workspace/output.json:Z
+      - ./output:/workspace/output
     environment:
       - PYTHONPATH=/workspace/src
     build:
@@ -79,10 +79,11 @@ services:
         "--workers", "4",
         "--prometheus-host", "prometheus",
         "--prometheus-port", "9090",
+        "--emqx-host", "brokermqtt",
         "--primes", "10000",
         "--iterations", "200",
-        "--scenario", "local",
-        "--output-path", "/workspace/output.json"
+        "--scenario", "mqtt",
+        "--output-path", "/workspace/output"
       ]
     deploy:
       resources:

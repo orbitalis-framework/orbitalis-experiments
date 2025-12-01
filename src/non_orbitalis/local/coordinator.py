@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import List
+from typing import List, override
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from common.coordinator import Coordinator
@@ -10,7 +10,8 @@ class LocalCoordinator(Coordinator):
 
     workers: List[LocalWorker]
 
-    def execute_distributed_computation(self, start: int, end: int):
+    @override
+    async def execute_distributed_computation(self, start: int, end: int):
         self.reset()
         self.last_result = []
 
@@ -32,4 +33,4 @@ class LocalCoordinator(Coordinator):
         for future in as_completed(tasks):
             self.last_result.extend(future.result())
 
-        self.done = True
+        self.done_event.set()

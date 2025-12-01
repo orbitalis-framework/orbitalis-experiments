@@ -1,6 +1,4 @@
-import asyncio
-from time import sleep
-from typing import Dict, List, override
+from typing import Dict, override
 from common.coordinator import Coordinator
 from dataclasses import dataclass
 from abc import ABC, abstractmethod
@@ -77,10 +75,8 @@ class HardwareMetricsExperimenter(ABC):
 
         results = []
         for _ in range(n_iterations):
-            result = self.run_experiment()
+            result = await self.run_experiment()
             results.append(result)
-
-        await asyncio.gather(*results)
 
         end_time = datetime.datetime.now(tz=datetime.timezone.utc)
         total_time = (end_time - start_time).total_seconds()
@@ -97,18 +93,16 @@ class HardwareMetricsExperimenter(ABC):
 
 
 @dataclass
-class NonOrbitalisHardwareMetricsExperimenter(HardwareMetricsExperimenter):
+class HardwareMetricsExperimenterPrimeNumbers(HardwareMetricsExperimenter):
     coordinator: Coordinator
     primes_range_start: int
     primes_range_end: int
 
     @override
     async def run_experiment(self):
-        self.coordinator.execute_distributed_computation(self.primes_range_start, self.primes_range_end)
-
-        while not self.coordinator.done:
-            await asyncio.sleep(0)
-
-
+        await self.coordinator.execute_distributed_computation(self.primes_range_start, self.primes_range_end)
+        await self.coordinator.done_event.wait()
+        print(f"Found {len(self.coordinator.last_result)} prime numbers.", flush=True)
+        self.coordinator.reset()
 
 

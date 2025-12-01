@@ -33,16 +33,17 @@ class MqttCoordinator(BaseMqtt, Coordinator):
 
         self._n_result_received += 1
         if self._n_result_received == len(self.worker_input_topics):
-            self.done = True
+            self.done_event.set()
 
     @override
-    def execute_distributed_computation(self, start: int, end: int):
+    async def execute_distributed_computation(self, start: int, end: int):
 
         if self.last_result is not None:
             raise RuntimeError("Computation already in progress")
 
         self.reset()
         self.last_result = []
+        self.done_event.clear()
 
         range_size = (end - start + 1) // len(self.worker_input_topics)
 
