@@ -1,42 +1,19 @@
 #!/bin/bash
 
-SCENARIOS=("local-multithread" "local-async" "mqtt" "orbitalis-local" "orbitalis-mqtt")
-
-N_WORKERS=4
-PRIMES=10000
-ITERATIONS=100
-
-
-N_SAMPLES=2
-
-echo "Starting monitoring services..."
-docker compose up -d --build cadvisor prometheus
-
-echo "Starting MQTT broker..."
-docker compose up -d --build mqttbroker
-
-sleep 10  # Give some time for services to start
-
-echo "Running experiments..."
-for scenario in "${SCENARIOS[@]}"; do
-    for sample in $(seq 1 $N_SAMPLES); do
-
-        export EXPERIMENT_CONTAINER_NAME="experiment_${scenario}_sample${sample}"
-        export NUM_WORKERS=$N_WORKERS
-        export PRIMES=$PRIMES
-        export ITERATIONS=$ITERATIONS
-        export SCENARIO=$scenario
-        export OUTPUT_FILE_NAME=$OUTPUT_FILE_NAME
+SCENARIOS=("local-async" "mqtt" "orbitalis-local" "orbitalis-mqtt" "local-multithread")
+N_WORKERS=(1 2 4 8)
+N_PRIMES=(5000 10000 20000 30000 40000 50000)
+ITERATIONS=(50 100)
+N_RUNS=10
 
 
-        OUTPUT_FILE_NAME="${EXPERIMENT_CONTAINER_NAME}.json"
-        echo "Running experiment: Scenario=${scenario}, Workers=${N_WORKERS}, Primes=${PRIMES}, Iterations=${ITERATIONS}, Sample=${sample}"
-
-        docker compose up --build --abort-on-container-exit experiment
-
-        sleep 10  # Short pause between experiments
+for iterations in "${ITERATIONS[@]}"; do
+    for scenario in "${SCENARIOS[@]}"; do
+        for workers in "${N_WORKERS[@]}"; do
+            for primes in "${N_PRIMES[@]}"; do
+                    bash ./run_experiments_batch.sh $scenario $workers $primes $iterations $N_RUNS
+                done
+            done
+        done
     done
-
 done
-
-docker compose down

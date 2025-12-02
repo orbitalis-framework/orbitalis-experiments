@@ -93,7 +93,7 @@ def load_experiments(directory: str) -> pd.DataFrame:
     if not df.empty:
         # Create a unique readable label for the configuration
         df['configuration_label'] = df.apply(
-            lambda row: row['scenario'], # f"{row['scenario']} | W:{row['n_workers']} P:{row['n_primes']} I:{row['n_iterations']}", 
+            lambda row: f"{row['scenario']}\nWorker: {row['n_workers']}\nPrimes: {row['n_primes']}\nIterations: {row['n_iterations']}", 
             axis=1
         )
         

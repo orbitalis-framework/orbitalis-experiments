@@ -9,4 +9,4 @@ class LocalAsyncWorker(PrimeNumberComputerWorker):
     identifier: str
 
     async def compute_async(self, start: int, end: int) -> List[int]:
-        return compute_prime_numbers_in_range(start, end)
+        return self.compute(start, end)
