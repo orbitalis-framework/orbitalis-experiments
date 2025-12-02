@@ -47,9 +47,9 @@ services:
   experiment:
     container_name: ${EXPERIMENT_CONTAINER_NAME:-experiment}
     depends_on:
-      - oe-cadvisor
-      - oe-prometheus
-      - oe-mqttbroker
+      - cadvisor
+      - prometheus
+      - mqttbroker
     volumes:
       - ./src:/workspace/src:Z
       - ./main.py:/workspace/main.py:Z
