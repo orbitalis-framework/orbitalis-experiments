@@ -35,6 +35,8 @@ services:
     image: prom/prometheus:latest
     ports:
       - "19090:9090"
+    depend_on:
+      - oe-cadvisor
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro,Z
     healthcheck:
@@ -42,28 +44,14 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
-    container_name: prometheus
-
-  grafana:
-    image: grafana/grafana:latest
-    container_name: oe-grafana
-    ports:
-      - "13000:3000"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-    depends_on:
-      - prometheus
+    container_name: oe-prometheus
 
   experiment:
     container_name: ${EXPERIMENT_CONTAINER_NAME:-experiment}
     depends_on:
-      - cadvisor
-      - prometheus
-      - grafana
-      - mqttbroker
+      - oe-cadvisor
+      - oe-prometheus
+      - oe-mqttbroker
     volumes:
       - ./src:/workspace/src:Z
       - ./main.py:/workspace/main.py:Z
