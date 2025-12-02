@@ -1,6 +1,7 @@
+import asyncio
 from typing import Dict, override
 from common.coordinator import Coordinator
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from abc import ABC, abstractmethod
 import datetime
 
@@ -14,31 +15,14 @@ class HardwareMetricsExperimentOutcome:
 
     def to_csv(self) -> str:
         return (
-            "cpu_percent_avg,cpu_percent_max,cpu_time_seconds,memory_percent_avg,memory_usage_max_bytes,"
-            "network_tx_avg,network_tx_max,network_rx_avg,network_rx_max,total_time_in_seconds\n"
-            f"{self.metrics.cpu_percent_avg},"
-            f"{self.metrics.cpu_percent_max},"
-            f"{self.metrics.cpu_time_seconds},"
-            f"{self.metrics.memory_percent_avg},"
-            f"{self.metrics.memory_usage_max_bytes},"
-            f"{self.metrics.network_tx_avg},"
-            f"{self.metrics.network_tx_max},"
-            f"{self.metrics.network_rx_avg},"
-            f"{self.metrics.network_rx_max},"
-            f"{self.total_time_in_seconds}"
+            ",".join(self.metrics.__dataclass_fields__.keys()) + ",total_time_in_seconds\n" +
+            ",".join(str(getattr(self.metrics, field)) for field in self.metrics.__dataclass_fields__.keys()) +
+            f",{self.total_time_in_seconds}\n"
         )
     
     def to_dict(self) -> Dict[str, float]:
         return {
-            "cpu_percent_avg": self.metrics.cpu_percent_avg,
-            "cpu_percent_max": self.metrics.cpu_percent_max,
-            "cpu_time_seconds": self.metrics.cpu_time_seconds,
-            "memory_percent_avg": self.metrics.memory_percent_avg,
-            "memory_usage_max_bytes": self.metrics.memory_usage_max_bytes,
-            "network_tx_avg": self.metrics.network_tx_avg,
-            "network_tx_max": self.metrics.network_tx_max,
-            "network_rx_avg": self.metrics.network_rx_avg,
-            "network_rx_max": self.metrics.network_rx_max,
+            **asdict(self.metrics),
             "total_time_in_seconds": self.total_time_in_seconds
         }
 
@@ -46,15 +30,7 @@ class HardwareMetricsExperimentOutcome:
     def from_dict(cls, data: Dict) -> 'HardwareMetricsExperimentOutcome':
         return HardwareMetricsExperimentOutcome(
             metrics=ContainerMetrics(
-                cpu_percent_avg=data["cpu_percent_avg"],
-                cpu_percent_max=data["cpu_percent_max"],
-                cpu_time_seconds=data["cpu_time_seconds"],
-                memory_percent_avg=data["memory_percent_avg"],
-                memory_usage_max_bytes=data["memory_usage_max_bytes"],
-                network_tx_avg=data["network_tx_avg"],
-                network_tx_max=data["network_tx_max"],
-                network_rx_avg=data["network_rx_avg"],
-                network_rx_max=data["network_rx_max"],
+                **{k: data[k] for k in ContainerMetrics.__dataclass_fields__.keys()}
             ),
             total_time_in_seconds=data["total_time_in_seconds"]
         )
@@ -71,6 +47,9 @@ class HardwareMetricsExperimenter(ABC):
 
     async def run_experiments(self, n_iterations: int) -> HardwareMetricsExperimentOutcome:
 
+        print("Cooling down pre-experiment...")
+        await asyncio.sleep(self.meter.scrape_interval * 2)
+
         start_time = datetime.datetime.now(tz=datetime.timezone.utc)
 
         results = []
@@ -81,9 +60,13 @@ class HardwareMetricsExperimenter(ABC):
         end_time = datetime.datetime.now(tz=datetime.timezone.utc)
         total_time = (end_time - start_time).total_seconds()
 
+        print("Waiting for Prometheus ingestion...")
+        await asyncio.sleep(self.meter.scrape_interval * 2)
+
         metrics = self.meter.get_container_metrics(
             container=self.experiment_container_name,
-            lookback_seconds=int(total_time) + 60  # Adding buffer time
+            start_time=start_time,
+            end_time=end_time
         )
 
         return HardwareMetricsExperimentOutcome(

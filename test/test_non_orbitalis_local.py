@@ -1,27 +1,57 @@
 import unittest
         
-from non_orbitalis.local.coordinator import LocalCoordinator
-from non_orbitalis.local.worker import LocalWorker
+from non_orbitalis.local_async.coordinator import LocalAsyncCoordinator
+from non_orbitalis.local_async.worker import LocalAsyncWorker
+from non_orbitalis.local_multithread.coordinator import LocalMultithreadCoordinator
+from non_orbitalis.local_multithread.worker import LocalMultithreadWorker
 
 
-class TestLocalCoordinator(unittest.TestCase):
+class TestLocalCoordinator(unittest.IsolatedAsyncioTestCase):
     
-    def test_execution(self):
+    async def test_execution_multithread(self):
 
         N_WORKERS = 4
 
         workers = [
-            LocalWorker(identifier=f"worker_{i}") for i in range(N_WORKERS)
+            LocalMultithreadWorker(identifier=f"worker_{i}") for i in range(N_WORKERS)
         ]
 
-        coordinator = LocalCoordinator(workers=workers)
+        coordinator = LocalMultithreadCoordinator(workers=workers)
 
-        coordinator.execute_distributed_computation(10, 50)
+        await coordinator.execute_distributed_computation(10, 50)
+        
+        await coordinator.done_event.wait()
+        
         expected_primes = [
             11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47
         ]
 
-        self.assertTrue(coordinator.done)
+        self.assertTrue(coordinator.done_event.is_set())
+        self.assertIsNotNone(coordinator.last_result)
+
+        result = coordinator.last_result
+
+        self.assertEqual(sorted(result), expected_primes)
+
+    async def test_execution_async(self):
+
+        N_WORKERS = 4
+
+        workers = [
+            LocalAsyncWorker(identifier=f"worker_{i}") for i in range(N_WORKERS)
+        ]
+
+        coordinator = LocalAsyncCoordinator(workers=workers)
+
+        await coordinator.execute_distributed_computation(10, 50)
+        
+        await coordinator.done_event.wait()
+        
+        expected_primes = [
+            11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47
+        ]
+
+        self.assertTrue(coordinator.done_event.is_set())
         self.assertIsNotNone(coordinator.last_result)
 
         result = coordinator.last_result

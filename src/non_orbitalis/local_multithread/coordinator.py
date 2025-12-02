@@ -3,12 +3,12 @@ from typing import List, override
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from common.coordinator import Coordinator
-from non_orbitalis.local.worker import LocalWorker
+from non_orbitalis.local_multithread.worker import LocalMultithreadWorker
 
 @dataclass
-class LocalCoordinator(Coordinator):
+class LocalMultithreadCoordinator(Coordinator):
 
-    workers: List[LocalWorker]
+    workers: List[LocalMultithreadWorker]
 
     @override
     async def execute_distributed_computation(self, start: int, end: int):

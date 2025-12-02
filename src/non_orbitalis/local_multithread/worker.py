@@ -5,5 +5,5 @@ from common.computation.worker import PrimeNumberComputerWorker
 
 
 @dataclass
-class LocalWorker(PrimeNumberComputerWorker):
+class LocalMultithreadWorker(PrimeNumberComputerWorker):
     identifier: str
