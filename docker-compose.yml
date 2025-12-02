@@ -6,7 +6,7 @@ services:
       - "8083:8083"
       - "8084:8084"
       - "18083:18083"
-    container_name: mqttbroker
+    container_name: oe-mqttbroker
     healthcheck:
       test: ["CMD", "emqx_ctl", "status"]
       interval: 30s
@@ -29,7 +29,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
-    container_name: cadvisor
+    container_name: oe-cadvisor
 
   prometheus:
     image: prom/prometheus:latest
@@ -46,7 +46,7 @@ services:
 
   grafana:
     image: grafana/grafana:latest
-    container_name: grafana
+    container_name: oe-grafana
     ports:
       - "13000:3000"
     healthcheck:
@@ -77,10 +77,10 @@ services:
       [
         "--container-name", "${EXPERIMENT_CONTAINER_NAME:-experiment}",
         "--workers", "${NUM_WORKERS}",
-        "--prometheus-host", "prometheus",
+        "--prometheus-host", "oe-prometheus",
         "--prometheus-port", "9090",
         "--prometheus-scrape-interval", "1",
-        "--mqtt-broker-host", "mqttbroker",
+        "--mqtt-broker-host", "oe-mqttbroker",
         "--mqtt-broker-port", "1883",
         "--primes", "${PRIMES}",
         "--iterations", "${ITERATIONS}",
