@@ -14,15 +14,15 @@ from orbitalis.orbiter.schemaspec import Input, Output
 
 from experiments.hardware_metrics_experimenter import HardwareMetricsExperimentOutcome, HardwareMetricsExperimenterPrimeNumbers
 from experiments.meter.prometheus_meter import PrometheusMeter
-from non_orbitalis.local_async.coordinator import LocalAsyncCoordinator
-from non_orbitalis.local_async.worker import LocalAsyncWorker
-from non_orbitalis.local_multithread.coordinator import LocalMultithreadCoordinator
-from non_orbitalis.local_multithread.worker import LocalMultithreadWorker
+from without_orbitalis.local_async.coordinator import LocalAsyncCoordinator
+from without_orbitalis.local_async.worker import LocalAsyncWorker
+from without_orbitalis.local_multithread.coordinator import LocalMultithreadCoordinator
+from without_orbitalis.local_multithread.worker import LocalMultithreadWorker
 from with_orbitalis.coordinator import OrbitalisCoordinator
 from with_orbitalis.worker import OrbitalisWorker, RangeMessage, PrimeNumbersMessage
 import paho.mqtt.client as mqtt
-from non_orbitalis.mqtt.coordinator import MqttCoordinator
-from non_orbitalis.mqtt.worker import MqttWorker
+from without_orbitalis.mqtt.coordinator import MqttCoordinator
+from without_orbitalis.mqtt.worker import MqttWorker
 
 def build_new_local_client() -> PubSubClient:
     return PubSubClientBuilder().with_subscriber(LocalSubscriber(eventbus=LocalEventBus())).with_publisher(
@@ -134,7 +134,7 @@ def dump_experiment(n_workers: int, n_primes: int, n_iterations: int, scenario: 
         json.dump(experiment, f, indent=4)
 
 
-async def non_orbitalis_local_multithread(meter: PrometheusMeter, n_workers: int, n_primes: int, n_iterations: int,
+async def without_orbitalis_local_multithread(meter: PrometheusMeter, n_workers: int, n_primes: int, n_iterations: int,
                 container_name: str) -> HardwareMetricsExperimentOutcome:
     workers = [
         LocalMultithreadWorker(identifier=f"worker_{i}") for i in range(n_workers)
@@ -154,7 +154,7 @@ async def non_orbitalis_local_multithread(meter: PrometheusMeter, n_workers: int
 
     return experiment_outcome
 
-async def non_orbitalis_local_async(meter: PrometheusMeter, n_workers: int, n_primes: int, n_iterations: int,
+async def without_orbitalis_local_async(meter: PrometheusMeter, n_workers: int, n_primes: int, n_iterations: int,
                 container_name: str) -> HardwareMetricsExperimentOutcome:
     workers = [
         LocalAsyncWorker(identifier=f"worker_{i}") for i in range(n_workers)
@@ -174,7 +174,7 @@ async def non_orbitalis_local_async(meter: PrometheusMeter, n_workers: int, n_pr
 
     return experiment_outcome
 
-async def non_orbitalis_mqtt(meter: PrometheusMeter, n_workers: int, n_primes: int, n_iterations: int, container_name: str, mqtt_broker_host: str, mqtt_broker_port: int) -> HardwareMetricsExperimentOutcome:
+async def without_orbitalis_mqtt(meter: PrometheusMeter, n_workers: int, n_primes: int, n_iterations: int, container_name: str, mqtt_broker_host: str, mqtt_broker_port: int) -> HardwareMetricsExperimentOutcome:
     
     # Set up the workers
     workers = [
@@ -311,7 +311,7 @@ async def main():
     )
 
     if args.scenario == "local-multithread":
-        outcome = await non_orbitalis_local_multithread(
+        outcome = await without_orbitalis_local_multithread(
             meter=prometheus_meter,
             n_workers=args.workers,
             n_primes=args.primes,
@@ -320,7 +320,7 @@ async def main():
         )
 
     elif args.scenario == "local-async":
-        outcome = await non_orbitalis_local_async(
+        outcome = await without_orbitalis_local_async(
             meter=prometheus_meter,
             n_workers=args.workers,
             n_primes=args.primes,
@@ -329,7 +329,7 @@ async def main():
         )
 
     elif args.scenario == "mqtt":
-        outcome = await non_orbitalis_mqtt(
+        outcome = await without_orbitalis_mqtt(
             meter=prometheus_meter,
             n_workers=args.workers,
             n_primes=args.primes,

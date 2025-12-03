@@ -5,7 +5,7 @@ from orbitalis.core.core import Core
 from typing import List, override
 
 from common.coordinator import Coordinator
-from with_orbitalis.worker import PrimeNumbersMessage, RangeMessage
+from with_orbitalis.message import PrimeNumbersMessage, RangeMessage
 from orbitalis.core.sink import sink
 from busline.event.event import Event
 

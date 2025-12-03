@@ -9,4 +9,4 @@ RUN apt-get update && \
     pip install --upgrade pip && \
     pip install -r /workspace/requirements.txt
 
-ENTRYPOINT ["python", "main.py"]
+ENTRYPOINT ["python", "-O", "main.py"]

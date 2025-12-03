@@ -1,8 +1,8 @@
 from time import sleep
 import unittest
 import paho.mqtt.client as mqtt
-from non_orbitalis.mqtt.coordinator import MqttCoordinator
-from non_orbitalis.mqtt.worker import MqttWorker
+from without_orbitalis.mqtt.coordinator import MqttCoordinator
+from without_orbitalis.mqtt.worker import MqttWorker
 
 
 class TestLocalCoordinator(unittest.TestCase):

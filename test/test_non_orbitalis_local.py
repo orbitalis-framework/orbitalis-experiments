@@ -1,9 +1,9 @@
 import unittest
         
-from non_orbitalis.local_async.coordinator import LocalAsyncCoordinator
-from non_orbitalis.local_async.worker import LocalAsyncWorker
-from non_orbitalis.local_multithread.coordinator import LocalMultithreadCoordinator
-from non_orbitalis.local_multithread.worker import LocalMultithreadWorker
+from without_orbitalis.local_async.coordinator import LocalAsyncCoordinator
+from without_orbitalis.local_async.worker import LocalAsyncWorker
+from without_orbitalis.local_multithread.coordinator import LocalMultithreadCoordinator
+from without_orbitalis.local_multithread.worker import LocalMultithreadWorker
 
 
 class TestLocalCoordinator(unittest.IsolatedAsyncioTestCase):

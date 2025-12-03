@@ -1,9 +1,8 @@
 from dataclasses import dataclass
 from typing import List, override
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from common.coordinator import Coordinator
-from non_orbitalis.local_async.worker import LocalAsyncWorker
+from without_orbitalis.local_async.worker import LocalAsyncWorker
 
 
 @dataclass

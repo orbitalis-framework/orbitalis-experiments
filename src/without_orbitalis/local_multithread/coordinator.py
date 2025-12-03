@@ -3,7 +3,7 @@ from typing import List, override
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from common.coordinator import Coordinator
-from non_orbitalis.local_multithread.worker import LocalMultithreadWorker
+from without_orbitalis.local_multithread.worker import LocalMultithreadWorker
 
 @dataclass
 class LocalMultithreadCoordinator(Coordinator):

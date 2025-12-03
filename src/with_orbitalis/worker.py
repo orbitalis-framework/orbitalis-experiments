@@ -7,20 +7,11 @@ from orbitalis.plugin.operation import operation
 from orbitalis.plugin.plugin import Plugin
 from busline.event.event import Event
 
-from common.computation.prime_number import compute_prime_numbers_in_range
 from common.computation.worker import PrimeNumberComputerWorker
-from common.worker import Worker
+from with_orbitalis.message import PrimeNumbersMessage, RangeMessage
 
 
-@dataclass
-class RangeMessage(AvroMessageMixin):
-    first_number: int
-    second_number: int
 
-
-@dataclass
-class PrimeNumbersMessage(AvroMessageMixin):
-    prime_numbers: List[int]
 
 
 @dataclass
@@ -37,8 +28,7 @@ class OrbitalisWorker(Plugin, PrimeNumberComputerWorker):
         output=Output.from_message(PrimeNumbersMessage)
     )
     async def calculate_prime_numbers_event_handler(self, topic: str, event: Event[RangeMessage]):
-        connections = await self._retrieve_and_touch_connections(input_topic=topic,
-                                                                 operation_name="calculate_prime_numbers")
+        connections = self.retrieve_connections(input_topic=topic, operation_name="calculate_prime_numbers")
 
         # Only one connection should be present on inbound topic
         assert len(connections) == 1
@@ -47,10 +37,6 @@ class OrbitalisWorker(Plugin, PrimeNumberComputerWorker):
 
         assert connection.output_topic is not None
         assert connection.output.has_output
-
-        # Manually touch the connection
-        async with connection.lock:
-            connection.touch()
 
         # Compute prime numbers in the given range
         prime_numbers = self.compute(event.payload.first_number, event.payload.second_number)

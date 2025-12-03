@@ -4,7 +4,7 @@ from typing import List, override
 import aiomqtt
 from common.computation.prime_number import compute_prime_numbers_in_range
 from common.computation.worker import PrimeNumberComputerWorker
-from non_orbitalis.mqtt.base import BaseMqtt
+from without_orbitalis.mqtt.base import BaseMqtt
 
 
 @dataclass
