@@ -215,6 +215,164 @@ def generate_plots(df: pd.DataFrame, output_folder: str):
         
         print(f" -> Saved: {safe_filename}")
 
+def generate_plots_by_worker(df: pd.DataFrame, output_folder: str, show_pct_diff: bool = True):
+    """
+    Generates bar charts for every numeric metric using subplots.
+    
+    Fix implemented:
+    - Calculates the baseline strictly from the PLOTTED bars (visual mean), 
+      not the raw dataframe data. This ensures the lowest bar in the chart 
+      is always treated as the baseline (0% diff) and is NOT annotated.
+    """
+    if df.empty:
+        print("DataFrame is empty. Skipping plot generation.")
+        return
+
+    os.makedirs(output_folder, exist_ok=True)
+    print(f"Generating plots in '{output_folder}' (Annotations: {show_pct_diff})...")
+
+    # 1. Setup Columns
+    config_cols = ['n_workers', 'n_primes', 'n_iterations', 'scenario', 'configuration_label']
+    metric_cols = [c for c in df.columns if c not in config_cols and pd.api.types.is_numeric_dtype(df[c])]
+
+    unique_workers = sorted(df['n_workers'].unique())
+    n_subplots = len(unique_workers)
+    
+    sns.set_theme(style="whitegrid")
+
+    for metric in metric_cols:
+        # Dynamic figure size
+        fig, axes = plt.subplots(nrows=1, ncols=n_subplots, figsize=(6 * n_subplots, 8), sharey=False)
+        
+        if n_subplots == 1:
+            axes = [axes]
+
+        for i, worker_count in enumerate(unique_workers):
+            ax = axes[i]
+            
+            # Filter Data
+            subplot_data = df[df['n_workers'] == worker_count].sort_values(by=['n_primes', 'scenario'])
+
+            if subplot_data.empty:
+                continue
+
+            # Create Bar Plot
+            sns.barplot(
+                data=subplot_data,
+                x='n_primes',
+                y=metric,
+                hue='scenario',
+                palette='viridis',
+                ax=ax
+            )
+
+            ax.set_title(f"Workers: {worker_count}", fontsize=14)
+            ax.set_xlabel("Number of Primes", fontsize=11)
+            
+            if i == 0:
+                ax.set_ylabel(metric, fontsize=12)
+            else:
+                ax.set_ylabel("")
+
+            # =========================================================
+            # ANNOTATION LOGIC (Two-Pass Approach)
+            # =========================================================
+            if show_pct_diff:
+                max_y_limit = 0 
+                
+                # --- PASS 1: Map Error Bars & Find Visual Baselines ---
+                # We need to find the minimum height PLOTTED for each X-tick (0, 1, 2...)
+                
+                error_bar_tops = {} # To avoid text overlap
+                group_visual_min = {} # Key: x_coord (int), Value: min_height (float)
+
+                # A. Get Error Bar Tops
+                for line in ax.lines:
+                    x_data = line.get_xdata()
+                    y_data = line.get_ydata()
+                    if len(x_data) > 0:
+                        x_pos = x_data[0]
+                        y_max = max(y_data)
+                        error_bar_tops[round(x_pos, 4)] = y_max
+
+                # B. Find the Minimum Bar Height per X-Group strictly from the patches
+                for p in ax.patches:
+                    h = p.get_height()
+                    if pd.isna(h) or h <= 0:
+                        continue
+                    
+                    # Identify the X group (0, 1, 2...)
+                    # p.get_x() returns the left edge. We add width/2 to find center, then round to nearest integer.
+                    x_idx = int(round(p.get_x() + p.get_width() / 2.))
+                    
+                    if x_idx not in group_visual_min:
+                        group_visual_min[x_idx] = h
+                    else:
+                        if h < group_visual_min[x_idx]:
+                            group_visual_min[x_idx] = h
+
+                # --- PASS 2: Annotate based on Visual Baselines ---
+                for p in ax.patches:
+                    bar_height = p.get_height()
+                    
+                    if pd.isna(bar_height) or bar_height <= 0:
+                        continue
+
+                    bar_x = p.get_x() + p.get_width() / 2.
+                    x_idx = int(round(bar_x))
+                    
+                    # Calculate Y position for text
+                    text_y_anchor = bar_height
+                    if round(bar_x, 4) in error_bar_tops:
+                        error_top = error_bar_tops[round(bar_x, 4)]
+                        if error_top > text_y_anchor:
+                            text_y_anchor = error_top
+                    
+                    max_y_limit = max(max_y_limit, text_y_anchor)
+
+                    # Compare against the VISUAL baseline found in Pass 1
+                    if x_idx in group_visual_min:
+                        baseline = group_visual_min[x_idx]
+                        
+                        # Apply Epsilon to handle float precision (e.g. 100.0 vs 100.000001)
+                        # We ONLY annotate if the bar is clearly taller than the baseline
+                        if bar_height > (baseline + 0.0001):
+                            pct_diff = ((bar_height - baseline) / baseline) * 100
+                            label_text = f"+{pct_diff:.1f}%"
+                            
+                            ax.annotate(
+                                label_text,
+                                (bar_x, text_y_anchor),
+                                ha='center', 
+                                va='bottom', 
+                                xytext=(0, 5),
+                                textcoords='offset points',
+                                fontsize=9,
+                                color="black",
+                                weight="normal"
+                            )
+                        # Else: It is the baseline bar (or equal to it), so NO label.
+
+                if max_y_limit > 0:
+                    ax.set_ylim(top=max_y_limit * 1.15)
+                
+            # Legend management
+            if i < n_subplots - 1:
+                if ax.get_legend():
+                    ax.get_legend().remove()
+            else:
+                ax.legend(title='Scenario', bbox_to_anchor=(1.05, 1), loc='upper left')
+
+        plt.suptitle(f"Metric Comparison: {metric}", fontsize=16, y=1.02)
+        plt.tight_layout()
+        
+        safe_filename = "".join([c if c.isalnum() else "_" for c in metric]) + ".png"
+        save_path = os.path.join(output_folder, safe_filename)
+        plt.savefig(save_path, bbox_inches='tight')
+        plt.close()
+        
+        print(f" -> Saved: {safe_filename}")
+
 def generate_overall_variation_plot(df: pd.DataFrame, metrics: List[str], output_folder: str):
     """
     Generates a single plot showing the average percentage variation 
@@ -329,6 +487,9 @@ def main():
 
     # Generate Standard Plots
     generate_plots(df_experiments, args.output_dir)
+
+    # Generate Standard Plots
+    generate_plots_by_worker(df_experiments, os.path.join(args.output_dir, "by_worker"))
 
     # --- Generate Overall Plot if requested ---
     if args.overall:

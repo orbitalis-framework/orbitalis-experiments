@@ -1,5 +1,6 @@
 {
     "configurations": [
+
         {
             "name": "Python Debugger: main",
             "type": "debugpy",
@@ -28,6 +29,7 @@
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal",
+            "justMyCode": false,
             "env": {
                 "PYTHONPATH": "${workspaceFolder}/src"
             }

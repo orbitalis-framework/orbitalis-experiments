@@ -2,8 +2,8 @@
 
 SCENARIOS=("local-async" "mqtt" "orbitalis-local" "orbitalis-mqtt" "local-multithread")
 N_WORKERS=(1 2 4 8)
-N_PRIMES=(5000 10000 20000 30000 40000 50000)
-ITERATIONS=(50 100)
+N_PRIMES=(5000 10000 20000 30000 40000)
+ITERATIONS=(50)
 N_RUNS=10
 
 

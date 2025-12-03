@@ -25,8 +25,9 @@ from without_orbitalis.mqtt.coordinator import MqttCoordinator
 from without_orbitalis.mqtt.worker import MqttWorker
 
 def build_new_local_client() -> PubSubClient:
-    return PubSubClientBuilder().with_subscriber(LocalSubscriber(eventbus=LocalEventBus())).with_publisher(
-        LocalPublisher(eventbus=LocalEventBus())).build()
+    eventbus = LocalEventBus()
+    return PubSubClientBuilder().with_subscriber(LocalSubscriber(eventbus=eventbus)).with_publisher(
+        LocalPublisher(eventbus=eventbus)).build()
 
 
 def build_new_mqtt_client(hostname: str, port: int) -> PubSubClient:
@@ -235,8 +236,9 @@ async def orbitalis_local(meter: PrometheusMeter, n_workers: int, n_primes: int,
         await worker.start()
     await coordinator.start()
 
-    await asyncio.sleep(2)
-
+    for worker in workers:
+        await coordinator.new_connection_added_event.wait()
+        
     experimenter = HardwareMetricsExperimenterPrimeNumbers(
         coordinator=coordinator,
         primes_range_start=1,
@@ -276,7 +278,8 @@ async def orbitalis_mqtt(meter: PrometheusMeter, n_workers: int, n_primes: int, 
         await worker.start()
     await coordinator.start()
 
-    await asyncio.sleep(2)
+    for worker in workers:
+        await coordinator.new_connection_added_event.wait()
 
     experimenter = HardwareMetricsExperimenterPrimeNumbers(
         coordinator=coordinator,

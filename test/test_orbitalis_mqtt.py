@@ -5,15 +5,11 @@ from busline.client.pubsub_client import PubSubClient, PubSubClientBuilder
 from busline.mqtt.mqtt_publisher import MqttPublisher
 from busline.mqtt.mqtt_subscriber import MqttSubscriber
 
-from with_orbitalis.coordinator import Coordinator
-from with_orbitalis.worker import Worker, PrimeNumbersMessage, RangeMessage
+from with_orbitalis.coordinator import  OrbitalisCoordinator
+from with_orbitalis.worker import OrbitalisWorker
+from with_orbitalis.message import PrimeNumbersMessage, RangeMessage
 from orbitalis.core.requirement import Constraint, OperationRequirement
 from orbitalis.orbiter.schemaspec import Input, Output
-
-import sys
-if sys.platform.startswith("win"):
-    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-
 
 def build_new_mqtt_client() -> PubSubClient:
     return PubSubClientBuilder().with_subscriber(MqttSubscriber(hostname="127.0.0.1")).with_publisher(
@@ -30,11 +26,11 @@ class TestLocalCoordinator(unittest.TestCase):
         N_WORKERS = 4
 
         workers = [
-            Worker(identifier=f"worker_{i}", eventbus_client=build_new_mqtt_client(), raise_exceptions=True,
+            OrbitalisWorker(identifier=f"worker_{i}", eventbus_client=build_new_mqtt_client(), raise_exceptions=True,
                    with_loop=False) for i in range(N_WORKERS)
         ]
 
-        coordinator = Coordinator(eventbus_client=build_new_mqtt_client(), with_loop=False, raise_exceptions=True,
+        coordinator = OrbitalisCoordinator(eventbus_client=build_new_mqtt_client(), with_loop=False, raise_exceptions=True,
                                   operation_requirements={
                                       "calculate_prime_numbers": OperationRequirement(Constraint(
                                           inputs=[Input.from_schema(RangeMessage.avro_schema())],

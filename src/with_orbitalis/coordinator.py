@@ -34,14 +34,15 @@ class OrbitalisCoordinator(Core, Coordinator):
         initial_first = start
         range_size = (end - start + 1) // self.n_workers
 
+        messages = [
+            RangeMessage(
+                first_number=initial_first + i * range_size,
+                second_number=end if i == self.n_workers - 1 else initial_first + (i + 1) * range_size - 1
+            )
+            for i in range(self.n_workers)
+        ]
+
         await self.execute_distributed(
             "calculate_prime_numbers",
-            [
-                RangeMessage(
-                    first_number=initial_first + i * range_size,
-                    second_number=(end if i == self.n_workers - 1
-                                   else initial_first + (i + 1) * range_size - 1)
-                )
-                for i in range(self.n_workers)
-            ]
+            messages
         )

@@ -6,8 +6,9 @@ from busline.local.eventbus.local_eventbus import LocalEventBus
 from busline.local.local_publisher import LocalPublisher
 from busline.local.local_subscriber import LocalSubscriber
 
-from with_orbitalis.coordinator import Coordinator
-from with_orbitalis.worker import Worker, PrimeNumbersMessage, RangeMessage
+from with_orbitalis.coordinator import OrbitalisCoordinator
+from with_orbitalis.worker import OrbitalisWorker
+from with_orbitalis.message import PrimeNumbersMessage, RangeMessage
 from orbitalis.core.requirement import Constraint, OperationRequirement
 from orbitalis.orbiter.schemaspec import Input, Output
 
@@ -24,14 +25,14 @@ class TestLocalCoordinator(unittest.TestCase):
 
     async def _test_execution_async(self):
 
-        N_WORKERS = 4
+        N_WORKERS = 8
 
         workers = [
-            Worker(identifier=f"worker_{i}", eventbus_client=build_new_local_client(), raise_exceptions=True,
+            OrbitalisWorker(identifier=f"worker_{i}", eventbus_client=build_new_local_client(), raise_exceptions=True,
                    with_loop=False) for i in range(N_WORKERS)
         ]
 
-        coordinator = Coordinator(eventbus_client=build_new_local_client(), with_loop=False, raise_exceptions=True,
+        coordinator = OrbitalisCoordinator(eventbus_client=build_new_local_client(), with_loop=False, raise_exceptions=True,
                                   operation_requirements={
                                       "calculate_prime_numbers": OperationRequirement(Constraint(
                                           inputs=[Input.from_schema(RangeMessage.avro_schema())],

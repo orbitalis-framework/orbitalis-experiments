@@ -30,7 +30,7 @@ for run in $(seq 1 $N_RUNS); do
 
     docker compose up --build --abort-on-container-exit experiment
 
-    sleep 10  # Short pause between experiments
+    sleep 2  # Short pause between experiments
 
 done
 
