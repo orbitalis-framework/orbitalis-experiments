@@ -5,21 +5,24 @@ N_WORKERS=$2
 PRIMES=$3
 ITERATIONS=$4
 N_RUNS=$5
+ADDITIONAL_SERVICES=${6:-1}
 
-echo "Starting monitoring services..."
-docker compose up -d --build cadvisor prometheus
+if [ "$ADDITIONAL_SERVICES" -eq 1 ]; then
+    echo "Starting monitoring services..."
+    docker compose up -d --build cadvisor prometheus
 
-if [ $SCENARIO = "mqtt" ] || [ $SCENARIO = "orbitalis-mqtt" ] || [ $SCENARIO = "orbitalis-mqtt-discovery" ]; then
+    if [ $SCENARIO = "mqtt" ] || [ $SCENARIO = "orbitalis-mqtt" ] || [ $SCENARIO = "orbitalis-mqtt-discovery" ]; then
 
-    echo "Starting MQTT broker..."
-    docker compose up -d --build mqttbroker
+        echo "Starting MQTT broker..."
+        docker compose up -d --build mqttbroker
 
-    sleep 10  # Give some time for services to start
+        sleep 10  # Give some time for services to start
 
-else
-    echo "No external services to start for scenario: $SCENARIO"
+    else
+        echo "No external services to start for scenario: $SCENARIO"
 
-    sleep 1  # Short pause for consistency
+        sleep 1  # Short pause for consistency
+    fi
 fi
 
 echo "Running experiments..."
@@ -40,4 +43,7 @@ for run in $(seq 1 $N_RUNS); do
 
 done
 
-docker compose down
+if [ "$ADDITIONAL_SERVICES" -eq 1 ]; then
+    echo "Stopping monitoring services..."
+    docker compose down
+fi

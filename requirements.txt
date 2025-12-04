@@ -1,4 +1,4 @@
-orbitalis==1.1.1
+orbitalis==1.1.3
 aiomqtt
 requests
 tqdm

@@ -5,10 +5,14 @@ from common.coordinator import Coordinator
 from dataclasses import dataclass, asdict
 from abc import ABC, abstractmethod
 import datetime
-
+from orbitalis.core.state import CoreState
 from experiments.meter.prometheus_meter import ContainerMetrics, PrometheusMeter
+from utils.busline_builder import build_new_mqtt_client
 from with_orbitalis.coordinator import OrbitalisCoordinator
 from with_orbitalis.worker import OrbitalisWorker
+from orbitalis.core.requirement import Constraint, OperationRequirement
+from orbitalis.orbiter.schemaspec import Input, Output
+from with_orbitalis.worker import OrbitalisWorker, RangeMessage, PrimeNumbersMessage
 
 
 @dataclass
@@ -93,16 +97,28 @@ class HardwareMetricsExperimenterPrimeNumbers(HardwareMetricsExperimenter):
 
 @dataclass
 class OrbitalisDiscoveryExperimenter(HardwareMetricsExperimenter):
-    coordinator: OrbitalisCoordinator
+    build_new_client: callable
     workers: list[OrbitalisWorker]
 
     @override
     async def run_experiment(self):
-        self.coordinator._connections.clear()
-        self.coordinator.switch_to_not_compliant()
-        for worker in self.workers:
-            worker._connections.clear()
-        await self.coordinator.start()
-        await self.coordinator.compliant_event.wait()
 
+        coordinator = OrbitalisCoordinator(eventbus_client=self.build_new_client(),
+                                       with_loop=False,
+                                       raise_exceptions=True,
+                                       operation_requirements={
+                                           "calculate_prime_numbers": OperationRequirement(Constraint(
+                                               inputs=[Input.from_schema(RangeMessage.avro_schema())],
+                                               outputs=[Output.from_schema(PrimeNumbersMessage.avro_schema())],
+                                               mandatory=[worker.identifier for worker in self.workers],
+                                           ))
+                                       })
+        
+        assert coordinator.state == CoreState.NOT_COMPLIANT
+
+        await coordinator.start()
+
+        await coordinator.compliant_event.wait()
+
+        assert coordinator.state == CoreState.COMPLIANT
 

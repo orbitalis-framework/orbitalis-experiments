@@ -1,6 +1,7 @@
 import argparse
 import asyncio
 import json
+import logging
 
 from orbitalis.core.requirement import Constraint, OperationRequirement
 from orbitalis.orbiter.schemaspec import Input, Output
@@ -17,6 +18,9 @@ from with_orbitalis.worker import OrbitalisWorker, RangeMessage, PrimeNumbersMes
 from without_orbitalis.mqtt.coordinator import MqttCoordinator
 from without_orbitalis.mqtt.worker import MqttWorker
 from utils.busline_builder import build_new_local_client, build_new_mqtt_client
+
+
+logging.basicConfig(level=logging.ERROR)
 
 
 def get_cli_parser():
@@ -286,6 +290,7 @@ async def orbitalis_mqtt(meter: PrometheusMeter, n_workers: int, n_primes: int, 
 
     for worker in workers:
         await worker.stop()
+        
     await coordinator.stop()
 
     await asyncio.sleep(1)
@@ -301,33 +306,17 @@ async def orbitalis_local_discovery(meter: PrometheusMeter, n_workers: int, n_it
                         with_loop=False) for i in range(n_workers)
     ]
 
-    coordinator = OrbitalisCoordinator(eventbus_client=build_new_local_client(fire_and_forget),
-                                       with_loop=False,
-                                       raise_exceptions=True,
-                                       operation_requirements={
-                                           "calculate_prime_numbers": OperationRequirement(Constraint(
-                                               inputs=[Input.from_schema(RangeMessage.avro_schema())],
-                                               outputs=[Output.from_schema(PrimeNumbersMessage.avro_schema())],
-                                               mandatory=[worker.identifier for worker in workers],
-                                           ))
-                                       })
-
     for worker in workers:
         await worker.start()
 
     experimenter = OrbitalisDiscoveryExperimenter(
-        coordinator=coordinator,
         workers=workers,
         experiment_container_name=container_name,
-        meter=meter
+        meter=meter,
+        build_new_client=lambda: build_new_local_client(fire_and_forget)
     )
 
     experiment_outcome = await experimenter.run_experiments(n_iterations=n_iterations)
-
-    for worker in workers:
-        await worker.stop()
-
-    await asyncio.sleep(1)
 
     return experiment_outcome
 
@@ -342,33 +331,17 @@ async def orbitalis_mqtt_discovery(meter: PrometheusMeter, n_workers: int, n_ite
                         with_loop=False) for i in range(n_workers)
     ]
 
-    coordinator = OrbitalisCoordinator(eventbus_client=build_new_mqtt_client(mqtt_broker_host, mqtt_broker_port),
-                                       with_loop=False,
-                                       raise_exceptions=True,
-                                       operation_requirements={
-                                           "calculate_prime_numbers": OperationRequirement(Constraint(
-                                               inputs=[Input.from_schema(RangeMessage.avro_schema())],
-                                               outputs=[Output.from_schema(PrimeNumbersMessage.avro_schema())],
-                                               mandatory=[worker.identifier for worker in workers],
-                                           ))
-                                       })
-
     for worker in workers:
         await worker.start()
 
     experimenter = OrbitalisDiscoveryExperimenter(
-        coordinator=coordinator,
         workers=workers,
         experiment_container_name=container_name,
-        meter=meter
+        meter=meter,
+        build_new_client=lambda: build_new_mqtt_client(mqtt_broker_host, mqtt_broker_port)
     )
 
     experiment_outcome = await experimenter.run_experiments(n_iterations=n_iterations)
-
-    for worker in workers:
-        await worker.stop()
-
-    await asyncio.sleep(1)
 
     return experiment_outcome
 

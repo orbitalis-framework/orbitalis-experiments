@@ -22,11 +22,11 @@ class OrbitalisWorker(Plugin, PrimeNumberComputerWorker):
         # operation name
         name="calculate_prime_numbers",
 
-        # operation is fed with Int64Message messages (integer)
-        input=Input.from_message(RangeMessage),
+        # operation is fed with RangeMessage messages, i.e. range of numbers on which computes prime numbers
+        input=RangeMessage,
 
         # operation doesn't send any output
-        output=Output.from_message(PrimeNumbersMessage)
+        output=PrimeNumbersMessage
     )
     async def calculate_prime_numbers_event_handler(self, topic: str, event: Event[RangeMessage]):
         connections = self.retrieve_connections(input_topic=topic, operation_name="calculate_prime_numbers")

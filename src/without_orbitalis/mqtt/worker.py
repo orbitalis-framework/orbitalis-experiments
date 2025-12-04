@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-
+from typing import override, List
 import aiomqtt
 from common.computation.prime_number import compute_prime_numbers_in_range
 from common.computation.worker import PrimeNumberComputerWorker
@@ -25,3 +25,7 @@ class MqttWorker(PrimeNumberComputerWorker):
                 primes_str = ",".join(map(str, primes))
 
                 await client.publish(response_topic, primes_str)
+
+    @override
+    def compute(self, start: int, end: int) -> List[int]:
+        return super().compute(start, end)

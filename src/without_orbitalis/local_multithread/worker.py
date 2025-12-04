@@ -1,9 +1,12 @@
 from dataclasses import dataclass
-from typing import List
-from common.computation.prime_number import compute_prime_numbers_in_range
+from typing import List, override
 from common.computation.worker import PrimeNumberComputerWorker
 
 
 @dataclass
 class LocalMultithreadWorker(PrimeNumberComputerWorker):
     identifier: str
+
+    @override
+    def compute(self, start: int, end: int) -> List[int]:
+        return super().compute(start, end)
