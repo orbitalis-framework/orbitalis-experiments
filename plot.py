@@ -41,6 +41,11 @@ SCENARIO_LABELS = {
     "orbitalis-mqtt": "Orbitalis MQTT",
 }
 
+
+def value_modifier(record, key, value):
+
+    raise NotImplementedError("This function is a placeholder for potential future value modifications.")
+
 def load_experiments(directory: str) -> pd.DataFrame:
     """
     Loads all JSON files from the specified directory and flattens them
@@ -82,7 +87,7 @@ def load_experiments(directory: str) -> pd.DataFrame:
                 # Flatten the 'outcome' dictionary
                 outcome = content.get("outcome", {})
                 for key, value in outcome.items():
-                    record[key] = value
+                    record[key] = value_modifier(record, key, value)
                     
                 data_records.append(record)
         except Exception as e:

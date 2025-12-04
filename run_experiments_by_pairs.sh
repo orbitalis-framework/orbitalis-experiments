@@ -1,3 +1,5 @@
+#!/bin/bash
+
 SCENARIOS=("local-async" "mqtt" "orbitalis-local" "orbitalis-mqtt" "local-multithread" "orbitalis-local-ff")
 N_WORKERS=(1 10 100)
 WORKLOAD_PAIRS=("100 50000" "1000 500" "10000 5")
