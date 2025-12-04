@@ -1,11 +1,14 @@
 import asyncio
 from typing import Dict, override
+
 from common.coordinator import Coordinator
 from dataclasses import dataclass, asdict
 from abc import ABC, abstractmethod
 import datetime
 
 from experiments.meter.prometheus_meter import ContainerMetrics, PrometheusMeter
+from with_orbitalis.coordinator import OrbitalisCoordinator
+from with_orbitalis.worker import OrbitalisWorker
 
 
 @dataclass
@@ -86,5 +89,20 @@ class HardwareMetricsExperimenterPrimeNumbers(HardwareMetricsExperimenter):
         await self.coordinator.execute_distributed_computation(self.primes_range_start, self.primes_range_end)
         await self.coordinator.done_event.wait()
         self.coordinator.reset()
+
+
+@dataclass
+class OrbitalisDiscoveryExperimenter(HardwareMetricsExperimenter):
+    coordinator: OrbitalisCoordinator
+    workers: list[OrbitalisWorker]
+
+    @override
+    async def run_experiment(self):
+        self.coordinator._connections.clear()
+        self.coordinator.switch_to_not_compliant()
+        for worker in self.workers:
+            worker._connections.clear()
+        await self.coordinator.start()
+        await self.coordinator.compliant_event.wait()
 
 
