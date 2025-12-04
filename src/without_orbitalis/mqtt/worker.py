@@ -1,5 +1,4 @@
-from dataclasses import dataclass, field
-from typing import List, override
+from dataclasses import dataclass
 
 import aiomqtt
 from common.computation.prime_number import compute_prime_numbers_in_range

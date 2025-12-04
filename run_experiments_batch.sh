@@ -5,18 +5,21 @@ N_WORKERS=$2
 PRIMES=$3
 ITERATIONS=$4
 N_RUNS=$5
-ADDITIONAL_SERVICES=${6:-1}
 
-if [ "$ADDITIONAL_SERVICES" -eq 1 ]; then
+echo "Starting monitoring services..."
+docker compose up -d --build cadvisor prometheus
 
-    echo "Starting monitoring services..."
-    docker compose up -d --build cadvisor prometheus
+if [ $SCENARIO = "mqtt" ] || [ $SCENARIO = "orbitalis-mqtt" ]; then
 
     echo "Starting MQTT broker..."
     docker compose up -d --build mqttbroker
 
     sleep 10  # Give some time for services to start
 
+else
+    echo "No external services to start for scenario: $SCENARIO"
+
+    sleep 1  # Short pause for consistency
 fi
 
 echo "Running experiments..."
