@@ -5,14 +5,19 @@ N_WORKERS=$2
 PRIMES=$3
 ITERATIONS=$4
 N_RUNS=$5
+ADDITIONAL_SERVICES=${6:-1}
 
-echo "Starting monitoring services..."
-docker compose up -d --build cadvisor prometheus
+if [ "$ADDITIONAL_SERVICES" -eq 1 ]; then
 
-echo "Starting MQTT broker..."
-docker compose up -d --build mqttbroker
+    echo "Starting monitoring services..."
+    docker compose up -d --build cadvisor prometheus
 
-sleep 10  # Give some time for services to start
+    echo "Starting MQTT broker..."
+    docker compose up -d --build mqttbroker
+
+    sleep 10  # Give some time for services to start
+
+fi
 
 echo "Running experiments..."
 for run in $(seq 1 $N_RUNS); do
@@ -29,8 +34,6 @@ for run in $(seq 1 $N_RUNS); do
     echo "Running experiment: Scenario=${SCENARIO}, Workers=${N_WORKERS}, Primes=${PRIMES}, Iterations=${ITERATIONS}, Run=${run}"
 
     docker compose up --build --abort-on-container-exit experiment
-
-    sleep 2  # Short pause between experiments
 
 done
 

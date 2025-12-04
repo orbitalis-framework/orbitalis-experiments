@@ -1,5 +1,6 @@
 {
     "configurations": [
+        
 
         {
             "name": "Python Debugger: main",
@@ -7,17 +8,19 @@
             "request": "launch",
             "program": "${workspaceFolder}/main.py",
             "console": "integratedTerminal",
+            "justMyCode": false,
             "args": [
                 "--container-name", "experiment",
                 "--workers", "4",
                 "--prometheus-host", "prometheus",
                 "--prometheus-port", "9090",
-                "--primes", "10000",
-                "--iterations", "200",
-                "--scenario", "mqtt",
+                "--primes", "80",
+                "--iterations", "20",
+                "--scenario", "orbitalis-local",
                 "--output-path", "/workspace/output.json",
                 "--mqtt-broker-host", "127.0.0.1",
-                "--mqtt-broker-port", "1883"
+                "--mqtt-broker-port", "1883",
+                "--prometheus-scrape-interval", "1"
             ],
             "env": {
                 "PYTHONPATH": "${workspaceFolder}/src"

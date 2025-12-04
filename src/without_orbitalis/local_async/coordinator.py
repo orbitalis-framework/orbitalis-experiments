@@ -1,4 +1,6 @@
+import asyncio
 from dataclasses import dataclass
+import itertools
 from typing import List, override
 
 from common.coordinator import Coordinator
@@ -26,10 +28,13 @@ class LocalAsyncCoordinator(Coordinator):
                 worker_end = end
 
             tasks.append(
-                worker.compute_async(worker_start, worker_end)
+                asyncio.create_task(
+                    worker.compute_async(worker_start, worker_end)
+                )
             )
 
-        for task in tasks:
-            self.last_result.extend(await task)
+        results = await asyncio.gather(*tasks)
+
+        self.last_result = list(itertools.chain.from_iterable(results))
 
         self.done_event.set()

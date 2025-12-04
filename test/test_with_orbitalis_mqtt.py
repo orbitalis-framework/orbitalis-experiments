@@ -2,37 +2,35 @@ import asyncio
 import unittest
 
 from busline.client.pubsub_client import PubSubClient, PubSubClientBuilder
-from busline.local.eventbus.local_eventbus import LocalEventBus
-from busline.local.local_publisher import LocalPublisher
-from busline.local.local_subscriber import LocalSubscriber
+from busline.mqtt.mqtt_publisher import MqttPublisher
+from busline.mqtt.mqtt_subscriber import MqttSubscriber
 
-from with_orbitalis.coordinator import OrbitalisCoordinator
+from with_orbitalis.coordinator import  OrbitalisCoordinator
 from with_orbitalis.worker import OrbitalisWorker
 from with_orbitalis.message import PrimeNumbersMessage, RangeMessage
 from orbitalis.core.requirement import Constraint, OperationRequirement
 from orbitalis.orbiter.schemaspec import Input, Output
 
+def build_new_mqtt_client() -> PubSubClient:
+    return PubSubClientBuilder().with_subscriber(MqttSubscriber(hostname="127.0.0.1")).with_publisher(
+        MqttPublisher(hostname="127.0.0.1")).build()
 
-def build_new_local_client() -> PubSubClient:
-    return PubSubClientBuilder().with_subscriber(LocalSubscriber(eventbus=LocalEventBus())).with_publisher(
-        LocalPublisher(eventbus=LocalEventBus())).build()
 
-
-class TestLocalCoordinator(unittest.TestCase):
+class TestOrbitalisMqttCoordinator(unittest.TestCase):
 
     def test_execution(self):
         asyncio.run(self._test_execution_async())
 
     async def _test_execution_async(self):
 
-        N_WORKERS = 8
+        N_WORKERS = 4
 
         workers = [
-            OrbitalisWorker(identifier=f"worker_{i}", eventbus_client=build_new_local_client(), raise_exceptions=True,
+            OrbitalisWorker(identifier=f"worker_{i}", eventbus_client=build_new_mqtt_client(), raise_exceptions=True,
                    with_loop=False) for i in range(N_WORKERS)
         ]
 
-        coordinator = OrbitalisCoordinator(eventbus_client=build_new_local_client(), with_loop=False, raise_exceptions=True,
+        coordinator = OrbitalisCoordinator(eventbus_client=build_new_mqtt_client(), with_loop=False, raise_exceptions=True,
                                   operation_requirements={
                                       "calculate_prime_numbers": OperationRequirement(Constraint(
                                           inputs=[Input.from_schema(RangeMessage.avro_schema())],
@@ -61,6 +59,8 @@ class TestLocalCoordinator(unittest.TestCase):
         for worker in workers:
             await worker.stop()
         await coordinator.stop()
+
+        await asyncio.sleep(1)
 
 
 if __name__ == '__main__':

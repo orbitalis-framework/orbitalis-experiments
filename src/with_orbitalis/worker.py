@@ -1,3 +1,4 @@
+import asyncio
 from dataclasses import dataclass
 from typing import List
 
@@ -42,7 +43,9 @@ class OrbitalisWorker(Plugin, PrimeNumberComputerWorker):
         prime_numbers = self.compute(event.payload.first_number, event.payload.second_number)
 
         # Send output to core
-        await self.eventbus_client.publish(
-            connection.output_topic,
-            PrimeNumbersMessage(prime_numbers=prime_numbers)
+        asyncio.create_task(
+            self.eventbus_client.publish(
+                connection.output_topic,
+                PrimeNumbersMessage(prime_numbers=prime_numbers)
+            )
         )

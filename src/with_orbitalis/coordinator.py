@@ -1,8 +1,6 @@
 from dataclasses import dataclass, field
-import asyncio
-
 from orbitalis.core.core import Core
-from typing import List, override
+from typing import override
 
 from common.coordinator import Coordinator
 from with_orbitalis.message import PrimeNumbersMessage, RangeMessage
@@ -44,5 +42,6 @@ class OrbitalisCoordinator(Core, Coordinator):
 
         await self.execute_distributed(
             "calculate_prime_numbers",
-            messages
+            messages,
+            fire_and_forget=True
         )

@@ -4,6 +4,7 @@ import json
 import time
 
 from busline.client.pubsub_client import PubSubClient, PubSubClientBuilder
+from busline.local.eventbus.async_local_eventbus import AsyncLocalEventBus
 from busline.local.eventbus.local_eventbus import LocalEventBus
 from busline.local.local_publisher import LocalPublisher
 from busline.local.local_subscriber import LocalSubscriber
@@ -20,12 +21,14 @@ from without_orbitalis.local_multithread.coordinator import LocalMultithreadCoor
 from without_orbitalis.local_multithread.worker import LocalMultithreadWorker
 from with_orbitalis.coordinator import OrbitalisCoordinator
 from with_orbitalis.worker import OrbitalisWorker, RangeMessage, PrimeNumbersMessage
-import paho.mqtt.client as mqtt
 from without_orbitalis.mqtt.coordinator import MqttCoordinator
 from without_orbitalis.mqtt.worker import MqttWorker
 
-def build_new_local_client() -> PubSubClient:
-    eventbus = LocalEventBus()
+LOCAL_EVENTBUS = AsyncLocalEventBus(fire_and_forget=False)
+LOCAL_EVENTBUS_FF = AsyncLocalEventBus(fire_and_forget=True)
+
+def build_new_local_client(fire_and_forget: bool) -> PubSubClient:
+    eventbus = LOCAL_EVENTBUS_FF if fire_and_forget else LOCAL_EVENTBUS
     return PubSubClientBuilder().with_subscriber(LocalSubscriber(eventbus=eventbus)).with_publisher(
         LocalPublisher(eventbus=eventbus)).build()
 
@@ -57,14 +60,14 @@ def get_cli_parser():
     parser.add_argument(
         "--mqtt-broker-host",
         type=str,
-        required=True,
+        required=False,
         help="MQTT broker host."
     )
 
     parser.add_argument(
         "--mqtt-broker-port",
         type=int,
-        required=True,
+        required=False,
         help="MQTT broker port."
     )
 
@@ -107,7 +110,7 @@ def get_cli_parser():
         "--scenario",
         type=str,
         required=True,
-        choices=["local-multithread", "local-async", "mqtt", "orbitalis-local", "orbitalis-mqtt"],
+        choices=["local-multithread", "local-async", "mqtt", "orbitalis-local", "orbitalis-local-ff", "orbitalis-mqtt"],
         help="Execution scenario."
     )
 
@@ -216,14 +219,14 @@ async def without_orbitalis_mqtt(meter: PrometheusMeter, n_workers: int, n_prime
 
 
 async def orbitalis_local(meter: PrometheusMeter, n_workers: int, n_primes: int, n_iterations: int,
-                          container_name: str) -> HardwareMetricsExperimentOutcome:
+                          container_name: str, fire_and_forget: bool) -> HardwareMetricsExperimentOutcome:
 
     workers = [
-        OrbitalisWorker(identifier=f"worker_{i}", eventbus_client=build_new_local_client(), raise_exceptions=True,
+        OrbitalisWorker(identifier=f"worker_{i}", eventbus_client=build_new_local_client(fire_and_forget), raise_exceptions=True,
                         with_loop=False) for i in range(n_workers)
     ]
 
-    coordinator = OrbitalisCoordinator(eventbus_client=build_new_local_client(), with_loop=False, raise_exceptions=True,
+    coordinator = OrbitalisCoordinator(eventbus_client=build_new_local_client(fire_and_forget), with_loop=False, raise_exceptions=True,
                               operation_requirements={
                                   "calculate_prime_numbers": OperationRequirement(Constraint(
                                       inputs=[Input.from_schema(RangeMessage.avro_schema())],
@@ -234,10 +237,10 @@ async def orbitalis_local(meter: PrometheusMeter, n_workers: int, n_primes: int,
 
     for worker in workers:
         await worker.start()
+
     await coordinator.start()
 
-    for worker in workers:
-        await coordinator.new_connection_added_event.wait()
+    await coordinator.compliant_event.wait()
         
     experimenter = HardwareMetricsExperimenterPrimeNumbers(
         coordinator=coordinator,
@@ -251,6 +254,7 @@ async def orbitalis_local(meter: PrometheusMeter, n_workers: int, n_primes: int,
 
     for worker in workers:
         await worker.stop()
+
     await coordinator.stop()
 
     await asyncio.sleep(1)
@@ -278,8 +282,7 @@ async def orbitalis_mqtt(meter: PrometheusMeter, n_workers: int, n_primes: int, 
         await worker.start()
     await coordinator.start()
 
-    for worker in workers:
-        await coordinator.new_connection_added_event.wait()
+    await coordinator.compliant_event.wait()
 
     experimenter = HardwareMetricsExperimenterPrimeNumbers(
         coordinator=coordinator,
@@ -348,7 +351,18 @@ async def main():
             n_workers=args.workers,
             n_primes=args.primes,
             n_iterations=args.iterations,
-            container_name=args.container_name
+            container_name=args.container_name,
+            fire_and_forget=False
+        )
+
+    elif args.scenario == "orbitalis-local-ff":
+        outcome = await orbitalis_local(
+            meter=prometheus_meter,
+            n_workers=args.workers,
+            n_primes=args.primes,
+            n_iterations=args.iterations,
+            container_name=args.container_name,
+            fire_and_forget=True
         )
 
     elif args.scenario == "orbitalis-mqtt":
