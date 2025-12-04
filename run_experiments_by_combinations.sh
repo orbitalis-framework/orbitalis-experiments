@@ -1,10 +1,10 @@
 #!/bin/bash
 
 SCENARIOS=("local-async" "mqtt" "orbitalis-local" "orbitalis-mqtt" "local-multithread" "orbitalis-local-ff")
-N_WORKERS=(1 10 100)
-N_PRIMES=(5000 10000 20000 30000 40000) 
-ITERATIONS=(50)
-N_RUNS=10
+N_WORKERS=(1)
+N_PRIMES=(10000)
+ITERATIONS=(5)
+N_RUNS=3
 
 echo "Starting MQTT broker..."
 docker compose up -d --build mqttbroker
