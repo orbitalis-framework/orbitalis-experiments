@@ -9,7 +9,7 @@ N_RUNS=$5
 echo "Starting monitoring services..."
 docker compose up -d --build cadvisor prometheus
 
-if [ $SCENARIO = "mqtt" ] || [ $SCENARIO = "orbitalis-mqtt" ]; then
+if [ $SCENARIO = "mqtt" ] || [ $SCENARIO = "orbitalis-mqtt" ] || [ $SCENARIO = "orbitalis-mqtt-discovery" ]; then
 
     echo "Starting MQTT broker..."
     docker compose up -d --build mqttbroker
