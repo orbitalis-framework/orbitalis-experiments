@@ -102,7 +102,7 @@ def load_experiments(directory: str) -> pd.DataFrame:
     
     return df
 
-def generate_plots(df: pd.DataFrame, output_folder: str):
+def generate_plots(df: pd.DataFrame, output_folder: str, output_format: str):
     """
     Generates bar charts for every numeric metric. Each bar is annotated with the percentage difference
     """
@@ -208,14 +208,14 @@ def generate_plots(df: pd.DataFrame, output_folder: str):
         plt.xticks(rotation=45, ha='right')
         plt.tight_layout()
         
-        safe_filename = "".join([c if c.isalnum() else "_" for c in metric]) + ".png"
+        safe_filename = "".join([c if c.isalnum() else "_" for c in metric]) + f".{output_format}"
         save_path = os.path.join(output_folder, safe_filename)
         plt.savefig(save_path)
         plt.close()
         
         print(f" -> Saved: {safe_filename}")
 
-def generate_plots_by_worker(df: pd.DataFrame, output_folder: str, show_pct_diff: bool = True):
+def generate_plots_by_worker(df: pd.DataFrame, output_folder: str, output_format: str, show_pct_diff: bool = True):
     """
     Generates bar charts for every numeric metric using subplots.
     
@@ -366,14 +366,14 @@ def generate_plots_by_worker(df: pd.DataFrame, output_folder: str, show_pct_diff
         plt.suptitle(f"Metric Comparison: {metric}", fontsize=16, y=1.02)
         plt.tight_layout()
         
-        safe_filename = "".join([c if c.isalnum() else "_" for c in metric]) + ".png"
+        safe_filename = "".join([c if c.isalnum() else "_" for c in metric]) + f".{output_format}"
         save_path = os.path.join(output_folder, safe_filename)
         plt.savefig(save_path, bbox_inches='tight')
         plt.close()
         
         print(f" -> Saved: {safe_filename}")
 
-def generate_overall_variation_plot(df: pd.DataFrame, metrics: List[str], output_folder: str):
+def generate_overall_variation_plot(df: pd.DataFrame, metrics: List[str], output_folder: str, output_format: str):
     """
     Generates a single plot showing the average percentage variation 
     for the specific list of metrics provided via command line.
@@ -427,10 +427,10 @@ def generate_overall_variation_plot(df: pd.DataFrame, metrics: List[str], output
         plt.text(index, row["Variation (%)"] + 0.5, f'{row["Variation (%)"]:.1f}%', color='black', ha="center")
 
     plt.tight_layout()
-    save_path = os.path.join(output_folder, "overall_variation_summary.png")
+    save_path = os.path.join(output_folder, f"overall_variation_summary.{output_format}")
     plt.savefig(save_path)
     plt.close()
-    print(f" -> Saved: overall_variation_summary.png")
+    print(f" -> Saved: {save_path}")
 
 def main():
     parser = argparse.ArgumentParser(
@@ -465,6 +465,14 @@ def main():
         help="List of metric keys (e.g. 'execution_time') to summarize in an overall variation plot."
     )
 
+    parser.add_argument(
+        "--output-format",
+        type=str,
+        default="png",
+        choices=["png", "pdf", "svg"],
+        help="Output format for the plots."
+    )
+
     args = parser.parse_args()
 
     # Load Data
@@ -486,15 +494,14 @@ def main():
             return
 
     # Generate Standard Plots
-    generate_plots(df_experiments, args.output_dir)
+    generate_plots(df_experiments, args.output_dir, args.output_format)
 
     # Generate Standard Plots
-    generate_plots_by_worker(df_experiments, os.path.join(args.output_dir, "by_worker"))
+    generate_plots_by_worker(df_experiments, os.path.join(args.output_dir, "by_worker"), args.output_format)
 
     # --- Generate Overall Plot if requested ---
     if args.overall:
-        generate_overall_variation_plot(df_experiments, args.overall, args.output_dir)
-
+        generate_overall_variation_plot(df_experiments, args.overall, args.output_dir, args.output_format)
     print("All operations completed successfully.")
 
 if __name__ == "__main__":
