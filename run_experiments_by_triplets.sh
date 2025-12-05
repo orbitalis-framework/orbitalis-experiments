@@ -1,6 +1,6 @@
 #!/bin/bash
 
-N_WORKERS=(1 10 100)
+N_WORKERS=(1 10 50)
 N_RUNS=5
 
 EXPERIMENTS=(
