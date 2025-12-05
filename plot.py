@@ -38,13 +38,23 @@ SCENARIO_LABELS = {
     "local-multithread": "Local Multi-threading",
     "mqtt": "MQTT",
     "orbitalis-local": "Orbitalis Local",
+    "orbitalis-local-ff": "Orbitalis Local (Fire-and-Forget)",
     "orbitalis-mqtt": "Orbitalis MQTT",
 }
 
+NORMALIZE_TO_ITERATIONS = 1_00_000
+
 
 def value_modifier(record, key, value):
+    # Normalize certain metrics to a per-iteration basis
+    if key in ["cpu_time_seconds", "memory_usage_max_bytes", "network_tx_total_bytes", "network_rx_total_bytes", "total_time_in_seconds"]:
+        n_iterations = record.get("n_iterations", 1)
+        value = value / n_iterations * NORMALIZE_TO_ITERATIONS
 
-    raise NotImplementedError("This function is a placeholder for potential future value modifications.")
+        if record["n_primes"] == 10_000:
+            value = value / 25
+    
+    return value
 
 def load_experiments(directory: str) -> pd.DataFrame:
     """
@@ -88,6 +98,10 @@ def load_experiments(directory: str) -> pd.DataFrame:
                 outcome = content.get("outcome", {})
                 for key, value in outcome.items():
                     record[key] = value_modifier(record, key, value)
+
+                if record["total_time_in_seconds"] < 1:
+                    print(f"Warning: Skipping file {file_path} due to unrealistically low total_time_in_seconds.")
+                    continue
                     
                 data_records.append(record)
         except Exception as e:
@@ -378,6 +392,278 @@ def generate_plots_by_worker(df: pd.DataFrame, output_folder: str, output_format
         
         print(f" -> Saved: {safe_filename}")
 
+def generate_pct_diff_boxplots_no_baseline(df: pd.DataFrame, output_folder: str, output_format: str):
+    """
+    Generates boxplots showing percentage increments relative to the best performing 
+    scenario (baseline) for each (Worker + Prime) combination.
+    
+    CRITICAL CHANGE:
+    - The baseline scenario itself (0% diff) is EXCLUDED from the visualization.
+    - Only scenarios that have an increment > 0 (or < 0 if strictly faster, though unlikely for baseline) are shown.
+    """
+    if df.empty:
+        print("DataFrame is empty. Skipping plot generation.")
+        return
+
+    os.makedirs(output_folder, exist_ok=True)
+    print(f"Generating % diff boxplots (hiding baseline) in '{output_folder}'...")
+
+    unique_workers = sorted(df['n_workers'].unique())
+    n_subplots = len(unique_workers)
+    
+    # Identify metric columns
+    config_cols = ['n_workers', 'n_primes', 'n_iterations', 'scenario', 'configuration_label']
+    metric_cols = [c for c in df.columns if c not in config_cols and pd.api.types.is_numeric_dtype(df[c])]
+
+    sns.set_theme(style="whitegrid")
+
+    for metric in metric_cols:
+        # --- 1. DATA PRE-PROCESSING ---
+        plot_df = df.copy()
+        plot_df['pct_diff'] = 0.0
+        plot_df['is_baseline'] = False # Flag to identify and hide the baseline later
+        
+        # Group by the specific combination of Worker + Prime to find the local baseline
+        groups = plot_df.groupby(['n_workers', 'n_primes'])
+        
+        for (w, p), group_data in groups:
+            # Calculate mean per scenario to find the "winner"
+            means_by_scenario = group_data.groupby('scenario')[metric].mean()
+            
+            if means_by_scenario.empty:
+                continue
+                
+            # Identify the baseline scenario (lowest mean) and its value
+            baseline_scenario = means_by_scenario.idxmin()
+            baseline_val = means_by_scenario.min()
+            
+            if baseline_val == 0:
+                continue
+
+            # Identify rows belonging to this group
+            mask = (plot_df['n_workers'] == w) & (plot_df['n_primes'] == p)
+            
+            # Calculate % diff
+            plot_df.loc[mask, 'pct_diff'] = ((plot_df.loc[mask, metric] - baseline_val) / baseline_val) * 100
+            
+            # Mark the baseline rows for removal
+            # We use the scenario name to be precise, ensuring we hide the specific scenario acting as baseline
+            baseline_mask = mask & (plot_df['scenario'] == baseline_scenario)
+            plot_df.loc[baseline_mask, 'is_baseline'] = True
+
+        # --- 2. FILTERING ---
+        # We remove the baseline rows so no box is drawn at 0
+        final_plot_df = plot_df[plot_df['is_baseline'] == False].copy()
+
+        # --- 3. PLOTTING ---
+        fig, axes = plt.subplots(nrows=1, ncols=n_subplots, figsize=(6 * n_subplots, 8), sharey=False)
+        
+        if n_subplots == 1:
+            axes = [axes]
+
+        for i, worker_count in enumerate(unique_workers):
+            ax = axes[i]
+            
+            # Filter Data for this subplot (Worker) and sort
+            subplot_data = final_plot_df[final_plot_df['n_workers'] == worker_count].sort_values(by=['n_primes', 'scenario'])
+
+            if subplot_data.empty:
+                # Handle case where perhaps only 1 scenario existed (so it was baseline and removed)
+                ax.set_title(f"Workers: {worker_count} (No increments)", fontsize=14)
+                continue
+
+            sns.boxplot(
+                data=subplot_data,
+                x='n_primes',
+                y='pct_diff',
+                hue='scenario',
+                palette='viridis',
+                ax=ax,
+                showfliers=False
+            )
+
+            # Reference line at 0 (represents the hidden baseline)
+            ax.axhline(0, color='red', linestyle='--', linewidth=1, alpha=0.5, label='Baseline (0%)')
+
+            ax.set_title(f"Workers: {worker_count}", fontsize=14)
+            ax.set_xlabel("Number of Primes", fontsize=11)
+            
+            if i == 0:
+                ax.set_ylabel(f"% Increment vs Group Baseline ({metric})", fontsize=12)
+            else:
+                ax.set_ylabel("")
+
+            # Fix Legend: Remove duplicates if any
+            if i < n_subplots - 1:
+                if ax.get_legend():
+                    ax.get_legend().remove()
+            else:
+                ax.legend(title='Scenario', bbox_to_anchor=(1.05, 1), loc='upper left')
+
+        plt.suptitle(f"Relative Performance Cost: {metric}", fontsize=16, y=1.02)
+        plt.tight_layout()
+        
+        safe_filename = "boxplot_diff_" + "".join([c if c.isalnum() else "_" for c in metric]) + f".{output_format}"
+        save_path = os.path.join(output_folder, safe_filename)
+        plt.savefig(save_path, bbox_inches='tight')
+        plt.close()
+        
+        print(f" -> Saved: {safe_filename}")
+
+def generate_plots_by_primes(df: pd.DataFrame, output_folder: str, output_format: str, show_pct_diff: bool = True):
+    """
+    Generates bar charts for every numeric metric using subplots.
+    
+    INVERTED LOGIC:
+    - Subplots are created based on 'n_primes' (Workload size).
+    - X-Axis represents 'n_workers' (Parallelism).
+    - Baseline calculation remains strictly visual based on the lowest bar per group.
+    """
+    if df.empty:
+        print("DataFrame is empty. Skipping plot generation.")
+        return
+
+    os.makedirs(output_folder, exist_ok=True)
+    print(f"Generating plots by Primes in '{output_folder}' (Annotations: {show_pct_diff})...")
+
+    # 1. Setup Columns
+    config_cols = ['n_workers', 'n_primes', 'n_iterations', 'scenario', 'configuration_label']
+    metric_cols = [c for c in df.columns if c not in config_cols and pd.api.types.is_numeric_dtype(df[c])]
+
+    # SWAP: We now find unique Primes for the subplots
+    unique_primes = sorted(df['n_primes'].unique())
+    n_subplots = len(unique_primes)
+    
+    sns.set_theme(style="whitegrid")
+
+    for metric in metric_cols:
+        # Dynamic figure size
+        fig, axes = plt.subplots(nrows=1, ncols=n_subplots, figsize=(6 * n_subplots, 8), sharey=False)
+        
+        if n_subplots == 1:
+            axes = [axes]
+
+        for i, prime_count in enumerate(unique_primes):
+            ax = axes[i]
+            
+            # SWAP: Filter by Prime count, Sort by Workers
+            subplot_data = df[df['n_primes'] == prime_count].sort_values(by=['n_workers', 'scenario'])
+
+            if subplot_data.empty:
+                continue
+
+            # SWAP: X-axis is now Workers
+            sns.barplot(
+                data=subplot_data,
+                x='n_workers', 
+                y=metric,
+                hue='scenario',
+                palette='viridis',
+                ax=ax
+            )
+
+            ax.set_title(f"Primes (Workload): {prime_count}", fontsize=14)
+            ax.set_xlabel("Number of Workers", fontsize=11)
+            
+            if i == 0:
+                ax.set_ylabel(metric, fontsize=12)
+            else:
+                ax.set_ylabel("")
+
+            # =========================================================
+            # ANNOTATION LOGIC (Preserved but acts on new X-axis)
+            # =========================================================
+            if show_pct_diff:
+                max_y_limit = 0 
+                
+                # --- PASS 1: Map Error Bars & Find Visual Baselines ---
+                error_bar_tops = {} 
+                group_visual_min = {} # Key now corresponds to x-index of Workers
+
+                # A. Get Error Bar Tops
+                for line in ax.lines:
+                    x_data = line.get_xdata()
+                    y_data = line.get_ydata()
+                    if len(x_data) > 0:
+                        x_pos = x_data[0]
+                        y_max = max(y_data)
+                        error_bar_tops[round(x_pos, 4)] = y_max
+
+                # B. Find the Minimum Bar Height per X-Group (Workers)
+                for p in ax.patches:
+                    h = p.get_height()
+                    if pd.isna(h) or h <= 0:
+                        continue
+                    
+                    x_idx = int(round(p.get_x() + p.get_width() / 2.))
+                    
+                    if x_idx not in group_visual_min:
+                        group_visual_min[x_idx] = h
+                    else:
+                        if h < group_visual_min[x_idx]:
+                            group_visual_min[x_idx] = h
+
+                # --- PASS 2: Annotate based on Visual Baselines ---
+                for p in ax.patches:
+                    bar_height = p.get_height()
+                    
+                    if pd.isna(bar_height) or bar_height <= 0:
+                        continue
+
+                    bar_x = p.get_x() + p.get_width() / 2.
+                    x_idx = int(round(bar_x))
+                    
+                    # Calculate Y position for text
+                    text_y_anchor = bar_height
+                    if round(bar_x, 4) in error_bar_tops:
+                        error_top = error_bar_tops[round(bar_x, 4)]
+                        if error_top > text_y_anchor:
+                            text_y_anchor = error_top
+                    
+                    max_y_limit = max(max_y_limit, text_y_anchor)
+
+                    # Compare against the VISUAL baseline found in Pass 1
+                    if x_idx in group_visual_min:
+                        baseline = group_visual_min[x_idx]
+                        
+                        # Apply Epsilon
+                        if bar_height > (baseline + 0.0001):
+                            pct_diff = ((bar_height - baseline) / baseline) * 100
+                            label_text = f"+{pct_diff:.1f}%"
+                            
+                            ax.annotate(
+                                label_text,
+                                (bar_x, text_y_anchor),
+                                ha='center', 
+                                va='bottom', 
+                                xytext=(0, 5),
+                                textcoords='offset points',
+                                fontsize=9,
+                                color="black",
+                                weight="normal"
+                            )
+
+                if max_y_limit > 0:
+                    ax.set_ylim(top=max_y_limit * 1.15)
+                
+            # Legend management
+            if i < n_subplots - 1:
+                if ax.get_legend():
+                    ax.get_legend().remove()
+            else:
+                ax.legend(title='Scenario', bbox_to_anchor=(1.05, 1), loc='upper left')
+
+        plt.suptitle(f"Metric Comparison by Workload: {metric}", fontsize=16, y=1.02)
+        plt.tight_layout()
+        
+        # Modified filename to distinguish from the worker-based plots
+        safe_filename = "by_prime_" + "".join([c if c.isalnum() else "_" for c in metric]) + f".{output_format}"
+        save_path = os.path.join(output_folder, safe_filename)
+        plt.savefig(save_path, bbox_inches='tight')
+        plt.close()
+        
+        print(f" -> Saved: {safe_filename}")
+
 def generate_overall_variation_plot(df: pd.DataFrame, metrics: List[str], output_folder: str, output_format: str):
     """
     Generates a single plot showing the average percentage variation 
@@ -499,10 +785,14 @@ def main():
             return
 
     # Generate Standard Plots
-    generate_plots(df_experiments, args.output_dir, args.output_format)
+    # generate_plots(df_experiments, args.output_dir, args.output_format)
 
     # Generate Standard Plots
     generate_plots_by_worker(df_experiments, os.path.join(args.output_dir, "by_worker"), args.output_format)
+
+    generate_plots_by_primes(df_experiments, os.path.join(args.output_dir, "by_primes"), args.output_format)
+
+    generate_pct_diff_boxplots_no_baseline(df_experiments, os.path.join(args.output_dir, "pct_diff_boxplots"), args.output_format)
 
     # --- Generate Overall Plot if requested ---
     if args.overall:
