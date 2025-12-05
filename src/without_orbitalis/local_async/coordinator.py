@@ -28,9 +28,7 @@ class LocalAsyncCoordinator(Coordinator):
                 worker_end = end
 
             tasks.append(
-                asyncio.create_task(
-                    worker.compute_async(worker_start, worker_end)
-                )
+                worker.compute_async(worker_start, worker_end)
             )
 
         results = await asyncio.gather(*tasks)

@@ -26,7 +26,7 @@ class TestOrbitalisMqttCoordinator(unittest.TestCase):
         N_WORKERS = 4
 
         workers = [
-            OrbitalisWorker(identifier=f"worker_{i}", eventbus_client=build_new_mqtt_client(), raise_exceptions=True,
+            OrbitalisWorker(identifier=f"worker_{i}", eventbus_client=build_new_mqtt_client(), raise_exceptions=True, fire_and_forget=True,
                    with_loop=False) for i in range(N_WORKERS)
         ]
 

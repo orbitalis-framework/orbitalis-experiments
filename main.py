@@ -212,6 +212,7 @@ async def orbitalis_local(meter: PrometheusMeter, n_workers: int, n_primes: int,
     workers = [
         OrbitalisWorker(identifier=f"worker_{i}", eventbus_client=build_new_local_client(),
                         raise_exceptions=True,
+                        fire_and_forget=execute_fire_and_forget,
                         with_loop=False) for i in range(n_workers)
     ]
 
@@ -260,6 +261,7 @@ async def orbitalis_mqtt(meter: PrometheusMeter, n_workers: int, n_primes: int, 
                          mqtt_broker_port: int, execute_fire_and_forget: bool) -> HardwareMetricsExperimentOutcome:
     workers = [
         OrbitalisWorker(identifier=f"worker_{i}",
+                        fire_and_forget=execute_fire_and_forget,
                         eventbus_client=build_new_mqtt_client(mqtt_broker_host, mqtt_broker_port),
                         raise_exceptions=True,
                         with_loop=False) for i in range(n_workers)

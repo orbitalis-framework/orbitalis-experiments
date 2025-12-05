@@ -19,6 +19,7 @@ METRIC_LABELS = {
     "cpu_percent_max": "Peak CPU Load (%)",
     
     # Memory Metrics
+    "memory_usage_avg_bytes": "Avg RAM Usage (Bytes)",
     "memory_usage_max_bytes": "Peak RAM Usage (Bytes)",
     "memory_percent_avg": "Avg RAM Utilization (%)",
     
@@ -41,6 +42,7 @@ SCENARIO_LABELS = {
     "orbitalis-local": "Orbitalis Local",
     "orbitalis-local-ff": "Orbitalis Local (Fire-and-Forget)",
     "orbitalis-mqtt": "Orbitalis MQTT",
+    "orbitalis-mqtt-ff": "Orbitalis MQTT (Fire-and-Forget)",
 }
 
 NORMALIZE_TO_ITERATIONS = 1_000_000
@@ -48,7 +50,7 @@ NORMALIZE_TO_ITERATIONS = 1_000_000
 
 def value_modifier(record, key, value):
     # Normalize certain metrics to a per-iteration basis
-    if key in ["cpu_time_seconds", "memory_usage_max_bytes", "network_tx_total_bytes", "network_rx_total_bytes", "total_time_in_seconds"]:
+    if key in ["cpu_time_seconds", "memory_usage_max_bytes", "network_tx_total_bytes", "network_rx_total_bytes", "total_time_in_seconds", "memory_usage_avg_bytes"]:
         n_iterations = record.get("n_iterations", 1)
         value = value / n_iterations * NORMALIZE_TO_ITERATIONS
     
@@ -125,7 +127,9 @@ def generate_stacked_metrics_plot(
     output_format: str, 
     metrics_to_stack: list[str],
     y_log: bool = False,
-    show_pct_diff: bool = True
+    show_pct_diff: bool = True,
+    width: int = 6,
+    height: int = 8,
 ):
     """
     Generates a stacked bar chart by summing the specified list of metrics.
@@ -183,7 +187,7 @@ def generate_stacked_metrics_plot(
     n_subplots = len(unique_workers)
     sns.set_theme(style="whitegrid")
     
-    fig, axes = plt.subplots(nrows=1, ncols=n_subplots, figsize=(6 * n_subplots, 8), sharey=False)
+    fig, axes = plt.subplots(nrows=1, ncols=n_subplots, figsize=(width * n_subplots, height), sharey=False, constrained_layout=True)
     if n_subplots == 1: axes = [axes]
 
     for i, worker_count in enumerate(unique_workers):
@@ -464,7 +468,7 @@ def generate_plots(df: pd.DataFrame, output_folder: str, output_format: str):
         
         print(f" -> Saved: {safe_filename}")
 
-def generate_plots_by_worker(df: pd.DataFrame, output_folder: str, output_format: str, y_log: bool = False, show_pct_diff: bool = True):
+def generate_plots_by_worker(df: pd.DataFrame, output_folder: str, output_format: str, y_log: bool = False, show_pct_diff: bool = True, width: int = 6, height: int = 8):
     """
     Generates bar charts for every numeric metric using subplots.
     
@@ -491,7 +495,7 @@ def generate_plots_by_worker(df: pd.DataFrame, output_folder: str, output_format
 
     for metric in metric_cols:
         # Dynamic figure size
-        fig, axes = plt.subplots(nrows=1, ncols=n_subplots, figsize=(6 * n_subplots, 8), sharey=False)
+        fig, axes = plt.subplots(nrows=1, ncols=n_subplots, figsize=(width * n_subplots, height), sharey=False, constrained_layout=True)
         
         if n_subplots == 1:
             axes = [axes]
@@ -632,7 +636,9 @@ def generate_time_split_plot(
     total_time_col: str,
     cpu_time_col: str,
     y_log: bool = False,       # <--- Added back
-    show_pct_diff: bool = True
+    show_pct_diff: bool = True,
+    width: int = 6,
+    height: int = 8
 ):
     """
     Generates a single plot file focusing ONLY on the time composition.
@@ -664,7 +670,7 @@ def generate_time_split_plot(
     sns.set_theme(style="whitegrid")
 
     # Dynamic figure size
-    fig, axes = plt.subplots(nrows=1, ncols=n_subplots, figsize=(6 * n_subplots, 8), sharey=False)
+    fig, axes = plt.subplots(nrows=1, ncols=n_subplots, figsize=(width * n_subplots, height), sharey=False, constrained_layout=True)
     
     if n_subplots == 1:
         axes = [axes]
@@ -1197,6 +1203,26 @@ def main():
         help="Output format for the plots."
     )
 
+    parser.add_argument(
+        "--show-pct-diff",
+        action="store_true",
+        help="If set, percentage difference annotations will be shown."
+    )
+
+    parser.add_argument(
+        "--width",
+        type=int,
+        default=6,
+        help="Width of individual subplots."
+    )
+
+    parser.add_argument(
+        "--height",
+        type=int,
+        default=8,
+        help="Height of individual subplots."
+    )
+
     args = parser.parse_args()
 
     # Load Data
@@ -1224,14 +1250,16 @@ def main():
     print(df_experiments.columns)
 
     generate_time_split_plot(df_experiments, os.path.join(args.output_dir, "by_worker_total_cpu_time"), args.output_format, 
-                             y_log=True, show_pct_diff=False, total_time_col="Total Execution Time (s)", cpu_time_col="Total CPU Time (s)")
+                             y_log=True, show_pct_diff=args.show_pct_diff, total_time_col="Total Execution Time (s)", cpu_time_col="Total CPU Time (s)",
+                             width=args.width, height=args.height)
     
     generate_stacked_metrics_plot(df_experiments, os.path.join(args.output_dir, "networking"), args.output_format, 
-                             y_log=True, show_pct_diff=False, metrics_to_stack=["Total Data Sent (Bytes)", "Total Data Received (Bytes)"])
+                             y_log=True, show_pct_diff=args.show_pct_diff, metrics_to_stack=["Total Data Sent (Bytes)", "Total Data Received (Bytes)"],
+                             width=args.width, height=args.height)
     
-    generate_plots_by_worker(df_experiments, os.path.join(args.output_dir, "by_worker"), args.output_format, y_log=False, show_pct_diff=False)
+    generate_plots_by_worker(df_experiments, os.path.join(args.output_dir, "by_worker"), args.output_format, y_log=False, show_pct_diff=args.show_pct_diff, width=args.width, height=args.height)
 
-    generate_plots_by_worker(df_experiments, os.path.join(args.output_dir, "by_worker_log"), args.output_format, y_log=True, show_pct_diff=False)
+    generate_plots_by_worker(df_experiments, os.path.join(args.output_dir, "by_worker_log"), args.output_format, y_log=True, show_pct_diff=args.show_pct_diff, width=args.width, height=args.height)
 
     # generate_plots_by_primes(df_experiments, os.path.join(args.output_dir, "by_primes"), args.output_format, y_log=True, show_pct_diff=False)
 
