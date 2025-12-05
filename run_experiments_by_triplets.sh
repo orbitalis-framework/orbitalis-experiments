@@ -8,17 +8,9 @@ EXPERIMENTS=(
     "local-async 1000 10000"
     "local-async 10000 100"
 
-    "mqtt 100 1000"
-    "mqtt 1000 1000"
-    "mqtt 10000 100"
-
     "orbitalis-local 100 100000"
     "orbitalis-local 1000 10000"
     "orbitalis-local 10000 100"
-
-    "orbitalis-mqtt 100 50000"
-    "orbitalis-mqtt 1000 10000"
-    "orbitalis-mqtt 10000 100"
 
     "local-multithread 100 100000"
     "local-multithread 1000 10000"
@@ -27,6 +19,14 @@ EXPERIMENTS=(
     "orbitalis-local-ff 100 100000"
     "orbitalis-local-ff 1000 10000"
     "orbitalis-local-ff 10000 100"
+
+    "mqtt 100 1000"
+    "mqtt 1000 1000"
+    "mqtt 10000 100"
+
+    "orbitalis-mqtt 100 50000"
+    "orbitalis-mqtt 1000 10000"
+    "orbitalis-mqtt 10000 100"
 )
 
 echo "Starting MQTT broker..."
@@ -41,7 +41,13 @@ for experiment in "${EXPERIMENTS[@]}"; do
     read -r scenario primes iterations <<< "$experiment"
     
     for workers in "${N_WORKERS[@]}"; do
-        bash ./run_experiments_batch.sh $scenario $workers $primes $iterations $N_RUNS 0
+        timeout 15m ./run_experiments_batch.sh $scenario $workers $primes $iterations $N_RUNS 0
+
+        status=$?
+
+        if [ $status -eq 124 ]; then
+            echo "Timeout reached for scenario: $scenario with $workers workers. Moving to the next configuration."
+        fi
     done
 done
 
