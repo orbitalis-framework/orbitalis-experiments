@@ -12,6 +12,7 @@ from busline.event.event import Event
 class OrbitalisCoordinator(Core, Coordinator):
     counter: int = field(default=0)
     n_workers: int = field(default=0)
+    execute_fire_and_forget: bool = field(default=False)
 
     @sink(operation_name="calculate_prime_numbers")
     async def calculate_prime_numbers_sink(self, topic: str, event: Event[PrimeNumbersMessage]):
@@ -43,5 +44,5 @@ class OrbitalisCoordinator(Core, Coordinator):
         await self.execute_distributed(
             "calculate_prime_numbers",
             messages,
-            fire_and_forget=True
+            fire_and_forget=self.execute_fire_and_forget
         )

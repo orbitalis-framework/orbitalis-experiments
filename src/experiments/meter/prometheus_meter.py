@@ -13,6 +13,7 @@ class ContainerMetrics:
     # --- Memory ---
     memory_usage_max_bytes: int  # Peak footprint
     memory_percent_avg: float    # Average utilization over time
+    memory_usage_avg_bytes: int  # Average absolute memory footprint in bytes
 
     # --- Network ---
     network_tx_total_bytes: int  # Absolute cost: Total bytes sent
@@ -138,6 +139,23 @@ class PrometheusMeter:
         data = self._query_range(query, start, end)
         values = self._extract_values(data)
         return int(max(values)) if values else 0
+    
+    def get_memory_usage_avg_bytes(self, container: str, start: datetime, end: datetime) -> int:
+        """
+        Returns the average absolute memory footprint in bytes over the time range.
+        """
+        query = f'container_memory_usage_bytes{{name="{container}"}}'
+        data = self._query_range(query, start, end)
+        values = self._extract_values(data)
+        
+        if not values:
+            return 0
+        
+        # Calculate average (Sum of all data points / Count of data points)
+        avg_bytes = sum(values) / len(values)
+        return int(avg_bytes)
+
+
 
     # ----------------------- NETWORK METRICS -----------------------
 
@@ -187,6 +205,7 @@ class PrometheusMeter:
             # Memory
             memory_percent_avg=self.get_memory_percent_avg(container, start_time, end_time),
             memory_usage_max_bytes=self.get_memory_usage_max_bytes(container, start_time, end_time),
+            memory_usage_avg_bytes=self.get_memory_usage_avg_bytes(container, start_time, end_time),
 
             # Network Totals (The requested absolute values)
             network_tx_total_bytes=tx_total,
