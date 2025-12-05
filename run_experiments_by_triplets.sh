@@ -4,29 +4,29 @@ N_WORKERS=(1 10 50)
 N_RUNS=5
 
 EXPERIMENTS=(
-    "local-async 500 4000"
-    "local-async 1000 1000"
-    "local-async 5000 40"
+    "local-async 500 40000"
+    "local-async 1000 10000"
+    "local-async 5000 400"
 
-    "orbitalis-local 500 400"
-    "orbitalis-local 1000 1000"
-    "orbitalis-local 5000 40"
+    "orbitalis-local 500 40000"
+    "orbitalis-local 1000 10000"
+    "orbitalis-local 5000 400"
 
-    "local-multithread 500 400"
-    "local-multithread 1000 1000"
-    "local-multithread 5000 40"
+    "local-multithread 500 40000"
+    "local-multithread 1000 10000"
+    "local-multithread 5000 400"
 
-    "orbitalis-local-ff 500 400"
-    "orbitalis-local-ff 1000 1000"
-    "orbitalis-local-ff 5000 40"
+    "orbitalis-local-ff 500 40000"
+    "orbitalis-local-ff 1000 10000"
+    "orbitalis-local-ff 5000 400"
 
-    "mqtt 500 4"
-    "mqtt 1000 100"
-    "mqtt 5000 40"
+    "mqtt 500 8000"
+    "mqtt 1000 1000"
+    "mqtt 5000 400"
 
-    "orbitalis-mqtt 500 200"
+    "orbitalis-mqtt 500 8000"
     "orbitalis-mqtt 1000 1000"
-    "orbitalis-mqtt 5000 40"
+    "orbitalis-mqtt 5000 400"
 )
 
 echo "Starting MQTT broker..."

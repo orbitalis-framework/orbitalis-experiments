@@ -47,12 +47,9 @@ NORMALIZE_TO_ITERATIONS = 1_00_000
 
 def value_modifier(record, key, value):
     # Normalize certain metrics to a per-iteration basis
-    if key in ["cpu_time_seconds", "memory_usage_max_bytes", "network_tx_total_bytes", "network_rx_total_bytes", "total_time_in_seconds"]:
-        n_iterations = record.get("n_iterations", 1)
-        value = value / n_iterations * NORMALIZE_TO_ITERATIONS
-
-        if record["n_primes"] == 10_000:
-            value = value / 25
+    # if key in ["cpu_time_seconds", "memory_usage_max_bytes", "network_tx_total_bytes", "network_rx_total_bytes", "total_time_in_seconds"]:
+    #     n_iterations = record.get("n_iterations", 1)
+    #     value = value / n_iterations * NORMALIZE_TO_ITERATIONS
     
     return value
 
@@ -234,7 +231,7 @@ def generate_plots(df: pd.DataFrame, output_folder: str, output_format: str):
         
         print(f" -> Saved: {safe_filename}")
 
-def generate_plots_by_worker(df: pd.DataFrame, output_folder: str, output_format: str, show_pct_diff: bool = True):
+def generate_plots_by_worker(df: pd.DataFrame, output_folder: str, output_format: str, y_log: bool = False, show_pct_diff: bool = True):
     """
     Generates bar charts for every numeric metric using subplots.
     
@@ -284,6 +281,9 @@ def generate_plots_by_worker(df: pd.DataFrame, output_folder: str, output_format
                 palette='viridis',
                 ax=ax
             )
+
+            if y_log:
+                ax.set_yscale('log')
 
             ax.set_title(f"Workers: {worker_count}", fontsize=14)
             ax.set_xlabel("Number of Primes", fontsize=11)
@@ -510,7 +510,7 @@ def generate_pct_diff_boxplots_no_baseline(df: pd.DataFrame, output_folder: str,
         
         print(f" -> Saved: {safe_filename}")
 
-def generate_plots_by_primes(df: pd.DataFrame, output_folder: str, output_format: str, show_pct_diff: bool = True):
+def generate_plots_by_primes(df: pd.DataFrame, output_folder: str, output_format: str, y_log: bool = False, show_pct_diff: bool = True):
     """
     Generates bar charts for every numeric metric using subplots.
     
@@ -561,6 +561,9 @@ def generate_plots_by_primes(df: pd.DataFrame, output_folder: str, output_format
                 palette='viridis',
                 ax=ax
             )
+
+            if y_log:
+                ax.set_yscale('log')
 
             ax.set_title(f"Primes (Workload): {prime_count}", fontsize=14)
             ax.set_xlabel("Number of Workers", fontsize=11)
@@ -788,9 +791,9 @@ def main():
     # generate_plots(df_experiments, args.output_dir, args.output_format)
 
     # Generate Standard Plots
-    generate_plots_by_worker(df_experiments, os.path.join(args.output_dir, "by_worker"), args.output_format)
+    generate_plots_by_worker(df_experiments, os.path.join(args.output_dir, "by_worker"), args.output_format, y_log=True, show_pct_diff=False)
 
-    generate_plots_by_primes(df_experiments, os.path.join(args.output_dir, "by_primes"), args.output_format)
+    generate_plots_by_primes(df_experiments, os.path.join(args.output_dir, "by_primes"), args.output_format, y_log=True, show_pct_diff=False)
 
     generate_pct_diff_boxplots_no_baseline(df_experiments, os.path.join(args.output_dir, "pct_diff_boxplots"), args.output_format)
 
