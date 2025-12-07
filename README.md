@@ -21,3 +21,30 @@ pip install -r requirements.txt
 ```
 
 2. Install MQTT broker
+
+
+## Evaluation
+
+Experiments are based on containers. In particular we use cAdvisor and Prometheus to measure resources consumption and we have built our container to run single experiment. You can modify configuration in `docker-compose.yml`
+
+Following scripts used to run experiments:
+
+```
+run_experiments.sh
+```
+
+```
+run_experiments_by_pairs.sh
+```
+
+```
+run_experiments_by_combinations.sh
+```
+
+
+
+## Plot Results
+
+In order to plot results, we have built a CLI: `plot.py`
+
+Instead, to visualize discovery overhead: `evaluate_discovery.py`
