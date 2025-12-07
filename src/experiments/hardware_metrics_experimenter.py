@@ -1,5 +1,5 @@
 import asyncio
-from typing import Dict, override
+from typing import Dict, Optional, override
 
 from common.coordinator import Coordinator
 from dataclasses import dataclass, asdict
@@ -8,6 +8,7 @@ import datetime
 from orbitalis.core.state import CoreState
 from experiments.meter.prometheus_meter import ContainerMetrics, PrometheusMeter
 from utils.busline_builder import build_new_mqtt_client
+from utils.profiling import start_profiling, stop_profiling
 from with_orbitalis.coordinator import OrbitalisCoordinator
 from with_orbitalis.worker import OrbitalisWorker
 from orbitalis.core.requirement import Constraint, OperationRequirement
@@ -43,10 +44,12 @@ class HardwareMetricsExperimentOutcome:
         )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class HardwareMetricsExperimenter(ABC):
     experiment_container_name: str
     meter: PrometheusMeter
+    profiling: bool = False
+    profiling_type: Optional[str] = None
 
     @abstractmethod
     async def run_experiment(self):
@@ -57,6 +60,10 @@ class HardwareMetricsExperimenter(ABC):
         print("Cooling down pre-experiment...")
         await asyncio.sleep(self.meter.scrape_interval * 2)
 
+        if self.profiling:
+            print(f"Starting profiling with type {self.profiling_type}...")
+            start_profiling(self.profiling_type)
+
         start_time = datetime.datetime.now(tz=datetime.timezone.utc)
 
         results = []
@@ -66,6 +73,10 @@ class HardwareMetricsExperimenter(ABC):
 
         end_time = datetime.datetime.now(tz=datetime.timezone.utc)
         total_time = (end_time - start_time).total_seconds()
+
+        if self.profiling:
+            print("Stopping profiling...")
+            stop_profiling(self.profiling_type, f"/workspace/output/{self.experiment_container_name}")
 
         print("Waiting for Prometheus ingestion...")
         await asyncio.sleep(self.meter.scrape_interval * 2)
@@ -82,7 +93,7 @@ class HardwareMetricsExperimenter(ABC):
         )
 
 
-@dataclass
+@dataclass(kw_only=True)
 class HardwareMetricsExperimenterPrimeNumbers(HardwareMetricsExperimenter):
     coordinator: Coordinator
     primes_range_start: int
@@ -95,7 +106,7 @@ class HardwareMetricsExperimenterPrimeNumbers(HardwareMetricsExperimenter):
         self.coordinator.reset()
 
 
-@dataclass
+@dataclass(kw_only=True)
 class OrbitalisDiscoveryExperimenter(HardwareMetricsExperimenter):
     build_new_client: callable
     workers: list[OrbitalisWorker]

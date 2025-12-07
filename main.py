@@ -2,6 +2,9 @@ import argparse
 import asyncio
 import json
 import logging
+import os
+import yappi
+import tracemalloc
 
 from orbitalis.core.requirement import Constraint, OperationRequirement
 from orbitalis.orbiter.schemaspec import Input, Output
@@ -22,6 +25,7 @@ from utils.busline_builder import build_new_local_client, build_new_mqtt_client
 
 logging.basicConfig(level=logging.ERROR)
 
+PROFILE_TYPE = "cpu"
 
 def get_cli_parser():
     parser = argparse.ArgumentParser(
@@ -107,6 +111,12 @@ def get_cli_parser():
         help="Output file path."
     )
 
+    parser.add_argument(
+        "--profile",
+        action="store_true",
+        help="If set, enables profiling."
+    )
+
     return parser
 
 
@@ -125,7 +135,7 @@ def dump_experiment(n_workers: int, n_primes: int, n_iterations: int, scenario: 
 
 
 async def without_orbitalis_local_multithread(meter: PrometheusMeter, n_workers: int, n_primes: int, n_iterations: int,
-                                              container_name: str) -> HardwareMetricsExperimentOutcome:
+                                              container_name: str, profiling: bool = False) -> HardwareMetricsExperimentOutcome:
     workers = [
         LocalMultithreadWorker(identifier=f"worker_{i}") for i in range(n_workers)
     ]
@@ -137,7 +147,9 @@ async def without_orbitalis_local_multithread(meter: PrometheusMeter, n_workers:
         primes_range_start=1,
         primes_range_end=n_primes,
         experiment_container_name=container_name,
-        meter=meter
+        meter=meter,
+        profiling=profiling,
+        profiling_type=PROFILE_TYPE,
     )
 
     experiment_outcome = await experimenter.run_experiments(n_iterations=n_iterations)
@@ -146,7 +158,7 @@ async def without_orbitalis_local_multithread(meter: PrometheusMeter, n_workers:
 
 
 async def without_orbitalis_local_async(meter: PrometheusMeter, n_workers: int, n_primes: int, n_iterations: int,
-                                        container_name: str) -> HardwareMetricsExperimentOutcome:
+                                        container_name: str, profiling: bool = False) -> HardwareMetricsExperimentOutcome:
     workers = [
         LocalAsyncWorker(identifier=f"worker_{i}") for i in range(n_workers)
     ]
@@ -158,7 +170,9 @@ async def without_orbitalis_local_async(meter: PrometheusMeter, n_workers: int, 
         primes_range_start=1,
         primes_range_end=n_primes,
         experiment_container_name=container_name,
-        meter=meter
+        meter=meter,
+        profiling=profiling,
+        profiling_type=PROFILE_TYPE,
     )
 
     experiment_outcome = await experimenter.run_experiments(n_iterations=n_iterations)
@@ -168,7 +182,7 @@ async def without_orbitalis_local_async(meter: PrometheusMeter, n_workers: int, 
 
 async def without_orbitalis_mqtt(meter: PrometheusMeter, n_workers: int, n_primes: int, n_iterations: int,
                                  container_name: str, mqtt_broker_host: str,
-                                 mqtt_broker_port: int) -> HardwareMetricsExperimentOutcome:
+                                 mqtt_broker_port: int, profiling: bool = False) -> HardwareMetricsExperimentOutcome:
     # Set up the workers
     workers = [
         MqttWorker(
@@ -188,7 +202,8 @@ async def without_orbitalis_mqtt(meter: PrometheusMeter, n_workers: int, n_prime
         worker_input_topics=[worker.input_topic for worker in workers],
         worker_output_topic="coordinator/output",
         broker_host=mqtt_broker_host,
-        broker_port=mqtt_broker_port
+        broker_port=mqtt_broker_port,
+        profiling_type=PROFILE_TYPE,
     )
 
     experimenter = HardwareMetricsExperimenterPrimeNumbers(
@@ -196,7 +211,9 @@ async def without_orbitalis_mqtt(meter: PrometheusMeter, n_workers: int, n_prime
         primes_range_start=1,
         primes_range_end=n_primes,
         experiment_container_name=container_name,
-        meter=meter
+        meter=meter,
+        profiling=profiling,
+        profiling_type=PROFILE_TYPE,
     )
 
     experiment_outcome = await experimenter.run_experiments(n_iterations=n_iterations)
@@ -208,7 +225,7 @@ async def without_orbitalis_mqtt(meter: PrometheusMeter, n_workers: int, n_prime
 
 
 async def orbitalis_local(meter: PrometheusMeter, n_workers: int, n_primes: int, n_iterations: int,
-                          container_name: str, execute_fire_and_forget: bool) -> HardwareMetricsExperimentOutcome:
+                          container_name: str, execute_fire_and_forget: bool, profiling: bool = False) -> HardwareMetricsExperimentOutcome:
     workers = [
         OrbitalisWorker(identifier=f"worker_{i}", eventbus_client=build_new_local_client(),
                         raise_exceptions=True,
@@ -241,7 +258,9 @@ async def orbitalis_local(meter: PrometheusMeter, n_workers: int, n_primes: int,
         primes_range_start=1,
         primes_range_end=n_primes,
         experiment_container_name=container_name,
-        meter=meter
+        meter=meter,
+        profiling=profiling,
+        profiling_type=PROFILE_TYPE,
     )
 
     experiment_outcome = await experimenter.run_experiments(n_iterations=n_iterations)
@@ -258,7 +277,8 @@ async def orbitalis_local(meter: PrometheusMeter, n_workers: int, n_primes: int,
 
 async def orbitalis_mqtt(meter: PrometheusMeter, n_workers: int, n_primes: int, n_iterations: int,
                          container_name: str, mqtt_broker_host: str,
-                         mqtt_broker_port: int, execute_fire_and_forget: bool) -> HardwareMetricsExperimentOutcome:
+                         mqtt_broker_port: int, execute_fire_and_forget: bool,
+                         profiling: bool = False) -> HardwareMetricsExperimentOutcome:
     workers = [
         OrbitalisWorker(identifier=f"worker_{i}",
                         fire_and_forget=execute_fire_and_forget,
@@ -288,7 +308,9 @@ async def orbitalis_mqtt(meter: PrometheusMeter, n_workers: int, n_primes: int, 
         primes_range_start=1,
         primes_range_end=n_primes,
         experiment_container_name=container_name,
-        meter=meter
+        meter=meter,
+        profiling=profiling,
+        profiling_type=PROFILE_TYPE,
     )
 
     experiment_outcome = await experimenter.run_experiments(n_iterations=n_iterations)
@@ -369,7 +391,8 @@ async def main():
             n_workers=args.workers,
             n_primes=args.primes,
             n_iterations=args.iterations,
-            container_name=args.container_name
+            container_name=args.container_name,
+            profiling=args.profile,
         )
 
     elif args.scenario == "local-async":
@@ -378,7 +401,8 @@ async def main():
             n_workers=args.workers,
             n_primes=args.primes,
             n_iterations=args.iterations,
-            container_name=args.container_name
+            container_name=args.container_name,
+            profiling=args.profile,
         )
 
     elif args.scenario == "mqtt":
@@ -389,7 +413,8 @@ async def main():
             n_iterations=args.iterations,
             container_name=args.container_name,
             mqtt_broker_host=args.mqtt_broker_host,
-            mqtt_broker_port=args.mqtt_broker_port
+            mqtt_broker_port=args.mqtt_broker_port,
+            profiling=args.profile,
         )
 
     elif args.scenario == "orbitalis-local":
@@ -399,7 +424,8 @@ async def main():
             n_primes=args.primes,
             n_iterations=args.iterations,
             container_name=args.container_name,
-            execute_fire_and_forget=False
+            execute_fire_and_forget=False,
+            profiling=args.profile,
         )
 
     elif args.scenario == "orbitalis-local-ff":
@@ -409,7 +435,8 @@ async def main():
             n_primes=args.primes,
             n_iterations=args.iterations,
             container_name=args.container_name,
-            execute_fire_and_forget=True
+            execute_fire_and_forget=True,
+            profiling=args.profile,
         )
         
 
@@ -422,7 +449,8 @@ async def main():
             container_name=args.container_name,
             mqtt_broker_host=args.mqtt_broker_host,
             mqtt_broker_port=args.mqtt_broker_port,
-            execute_fire_and_forget=False
+            execute_fire_and_forget=False,
+            profiling=args.profile,
         )
 
     elif args.scenario == "orbitalis-mqtt-ff":
@@ -434,7 +462,8 @@ async def main():
             container_name=args.container_name,
             mqtt_broker_host=args.mqtt_broker_host,
             mqtt_broker_port=args.mqtt_broker_port,
-            execute_fire_and_forget=True
+            execute_fire_and_forget=True,
+            profiling=args.profile,
         )
 
     elif args.scenario == "orbitalis-local-discovery":
@@ -457,7 +486,7 @@ async def main():
 
     else:
         raise ValueError(f"Unknown scenario: {args.scenario}")
-
+    
     dump_experiment(
         n_workers=args.workers,
         n_primes=args.primes,
@@ -466,7 +495,6 @@ async def main():
         outcome=outcome,
         output_path=args.output_path
     )
-
 
 if __name__ == "__main__":
     asyncio.run(main())

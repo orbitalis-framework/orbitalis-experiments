@@ -121,7 +121,7 @@ def load_experiments(directory: str) -> pd.DataFrame:
     
     return df
 
-def generate_stacked_metrics_plot(
+def generate_stacked_metrics_plot_horizontal_legend(
     df: pd.DataFrame, 
     output_folder: str, 
     output_format: str, 
@@ -132,17 +132,7 @@ def generate_stacked_metrics_plot(
     height: int = 8,
 ):
     """
-    Generates a stacked bar chart by summing the specified list of metrics.
-    
-    How it works:
-    - It creates cumulative sums of the metrics.
-    - It plots them in reverse order (Largest Total -> Smallest Component).
-    - The result is a stacked bar where the colors represent the 'scenario'
-      and the hatch patterns (textures) represent the specific 'metric'.
-    
-    Args:
-        metrics_to_stack: A list of column names (e.g., ['cpu_time', 'wait_time', 'io_time']).
-                          The first item in the list will be at the bottom of the stack.
+    Generates a stacked bar chart with a horizontal legend at the bottom.
     """
     if df.empty:
         print("DataFrame is empty. Skipping plot generation.")
@@ -157,29 +147,20 @@ def generate_stacked_metrics_plot(
     os.makedirs(output_folder, exist_ok=True)
     print(f"Generating stacked plot for {metrics_to_stack} in '{output_folder}'...")
 
-    # 2. Data Preparation: Calculate Cumulative Sums
-    # We need to plot the Total (A+B+C) first, then (A+B), then (A) to achieve the stacking effect.
+    # 2. Data Preparation
     df_temp = df.copy()
     cumulative_cols = []
     current_sum_col = None
 
-    # We iterate in order (A, B, C). 
-    # A will be the bottom. A+B will be middle. A+B+C will be top.
     for i, metric in enumerate(metrics_to_stack):
         new_col_name = f"__cum_{i}_{metric}"
-        
         if current_sum_col is None:
             df_temp[new_col_name] = df_temp[metric]
         else:
             df_temp[new_col_name] = df_temp[current_sum_col] + df_temp[metric]
-        
         cumulative_cols.append(new_col_name)
         current_sum_col = new_col_name
 
-    # We define a list of hatches (textures) for the layers.
-    # Top layer (last metric added) gets the first texture.
-    # Supported hatches: /, \, |, -, +, x, o, O, ., *
-    # We rotate them so the "Bottom" metric is solid (or distinct).
     available_hatches = ['', '///', '...', 'xxx', '+++', '|||']
     
     # Setup Plot
@@ -187,124 +168,77 @@ def generate_stacked_metrics_plot(
     n_subplots = len(unique_workers)
     sns.set_theme(style="whitegrid")
     
-    fig, axes = plt.subplots(nrows=1, ncols=n_subplots, figsize=(width * n_subplots, height), sharey=False, constrained_layout=True)
+    fig, axes = plt.subplots(
+        nrows=1, 
+        ncols=n_subplots, 
+        figsize=(width * n_subplots, height), 
+        sharey=False, 
+        constrained_layout=True
+    )
+    
     if n_subplots == 1: axes = [axes]
+
+    # --- Prepare Colors Manually ---
+    unique_scenarios = sorted(df['scenario'].unique())
+    palette_colors = sns.color_palette("viridis", n_colors=len(unique_scenarios))
+    scenario_color_map = dict(zip(unique_scenarios, palette_colors))
 
     for i, worker_count in enumerate(unique_workers):
         ax = axes[i]
         
         subplot_data = df_temp[df_temp['n_workers'] == worker_count].sort_values(by=['n_primes', 'scenario'])
+        
         if subplot_data.empty: continue
 
-        # 3. Plotting Loop (Reverse Order)
-        # We plot the LARGEST cumulative column first (the background/total).
-        # We plot the SMALLEST cumulative column last (the foreground/bottom).
-        
-        # Determine max Y for limits (based on the total sum)
-        total_col = cumulative_cols[-1] # The last column is the sum of all
-        
-        # We iterate backwards through the cumulative columns
+        # 3. Plotting Loop
         for idx in range(len(cumulative_cols) - 1, -1, -1):
             col_name = cumulative_cols[idx]
-            
-            # Use specific hatch for this layer
-            # We want the 'last' metric in the list (top of stack) to have a specific hatch
-            # Logic: idx 0 is Bottom Metric. idx N is Top Total.
-            # We assign hatches based on the metric index.
             hatch_pattern = available_hatches[idx % len(available_hatches)]
-            
-            # Determine alpha: The bottom layer (idx 0) should be solid (1.0).
-            # Upper layers are drawn *under* it in this loop? No, we draw Largest First.
-            # So Largest (Total) is drawn first. It should be semi-transparent if we want to see grid?
-            # Actually, standard stacked logic: Draw Big, then Draw Medium on top.
             
             sns.barplot(
                 data=subplot_data,
                 x='n_primes',
                 y=col_name,
                 hue='scenario',
-                palette='viridis',
+                palette=scenario_color_map,
                 ax=ax,
                 dodge=True,
                 hatch=hatch_pattern,
-                edgecolor='black', # clear borders
+                edgecolor='black',
                 linewidth=0.5,
-                alpha=1.0 # Solid colors, the hatch adds the texture
+                alpha=1.0,
+                legend=False 
             )
 
-        # 4. Annotations (Applied ONLY to the Total Height / First Layer plotted)
-        # Since we plotted the Total (last col) first, the current patches/lines might be mixed.
-        # But we can calculate baselines based on the 'total_col' data logic.
-        
+        # 4. Annotations
         if show_pct_diff:
             max_y_limit = 0
-            
-            # Calculate Visual Baselines for the Total Height
-            # We need to manually group the bars by X coordinate to find the min-height (baseline)
-            # strictly for the TOTAL bar (which corresponds to the largest values).
-            
-            # Helper: extract total heights from dataframe to simplify logic, 
-            # because 'ax.patches' now contains multiple layers of bars.
-            # It's safer to rely on the Visual Patches of the *first* iteration (The Total),
-            # but getting them from the axes is hard because they are mixed.
-            
-            # Alternative: Re-scan all patches, find the tallest one for each X/Hue group?
-            # Simpler: Just scan all patches. The Tallest patch at a specific X/Hue is the Total.
-            
-            # A. Map (X_coord, Scenario_Index) -> Max Height found
-            # This identifies the "Total" height for every bar group.
-            bar_tops = {} # Key: (x_coord_int, x_position_float) -> height
-            
+            bar_tops = {} 
             for p in ax.patches:
                 h = p.get_height()
                 if pd.isna(h) or h <= 0: continue
-                
-                # Center X
                 mx = p.get_x() + p.get_width() / 2.
                 x_idx = int(round(mx))
-                
                 key = (x_idx, round(mx, 3))
-                
-                if key not in bar_tops:
-                    bar_tops[key] = h
-                else:
-                    # We want the MAX height because that represents the Total Stack
-                    if h > bar_tops[key]:
-                        bar_tops[key] = h
+                if key not in bar_tops: bar_tops[key] = h
+                else: 
+                    if h > bar_tops[key]: bar_tops[key] = h
 
-            # B. Find the Baseline (Minimum Total Height) for each X group (Number of Primes)
-            group_baselines = {} # x_idx -> min_total_height
-            
+            group_baselines = {}
             for (x_idx, mx), h in bar_tops.items():
-                if x_idx not in group_baselines:
-                    group_baselines[x_idx] = h
-                else:
-                    if h < group_baselines[x_idx]:
-                        group_baselines[x_idx] = h
+                if x_idx not in group_baselines: group_baselines[x_idx] = h
+                else: 
+                    if h < group_baselines[x_idx]: group_baselines[x_idx] = h
 
-            # C. Annotate
             for (x_idx, mx), h in bar_tops.items():
                 if x_idx in group_baselines:
                     baseline = group_baselines[x_idx]
-                    
-                    # Apply Epsilon
                     if h > (baseline + 0.0001):
                         pct_diff = ((h - baseline) / baseline) * 100
                         label_text = f"+{pct_diff:.1f}%"
-                        
-                        # Find Error bar top for this position to avoid overlap
-                        # (Simplified: just put it above the bar)
                         text_y = h
-                        
                         max_y_limit = max(max_y_limit, text_y)
-
-                        ax.annotate(
-                            label_text,
-                            (mx, text_y),
-                            ha='center', va='bottom', 
-                            xytext=(0, 5), textcoords='offset points',
-                            fontsize=9, color="black", weight="bold"
-                        )
+                        ax.annotate(label_text, (mx, text_y), ha='center', va='bottom', xytext=(0, 5), textcoords='offset points', fontsize=9, color="black", weight="bold")
             
             if max_y_limit > 0:
                  mult = 1.5 if y_log else 1.15
@@ -312,45 +246,229 @@ def generate_stacked_metrics_plot(
 
         # 5. Formatting
         if y_log: ax.set_yscale('log')
-        
         ax.set_title(f"Workers: {worker_count}", fontsize=14)
         ax.set_xlabel("Number of Primes", fontsize=11)
         if i == 0: ax.set_ylabel("Stacked Metric Sum", fontsize=12)
         else: ax.set_ylabel("")
 
-        # 6. Custom Legend
-        if i == n_subplots - 1:
-            # Clear auto-generated legend
-            if ax.get_legend(): ax.get_legend().remove()
-            
-            handles, labels = ax.get_legend_handles_labels()
-            # Extract just the colors (Scenarios) from the first few handles
-            # The number of scenarios = len(df['scenario'].unique())
-            n_scenarios = len(subplot_data['scenario'].unique())
-            
-            scenario_handles = handles[:n_scenarios]
-            scenario_labels = labels[:n_scenarios]
-            
-            # Create Pattern handles for the Metrics
-            metric_handles = []
-            for m_idx, m_name in enumerate(metrics_to_stack):
-                # Corresponding hatch used in loop
-                hatch = available_hatches[m_idx % len(available_hatches)]
-                # Create a proxy patch (white with black hatch)
-                patch = mpatches.Patch(facecolor='white', edgecolor='black', hatch=hatch, label=m_name)
-                metric_handles.append(patch)
+    # --- 6. MANUAL HORIZONTAL LEGEND (Bottom) ---
+    
+    # A. Scenarios (Colors)
+    scenario_handles = []
+    for sc_name, sc_color in scenario_color_map.items():
+        patch = mpatches.Patch(facecolor=sc_color, edgecolor='black', label=sc_name)
+        scenario_handles.append(patch)
 
-            # Combine
-            final_handles = scenario_handles + [mpatches.Patch(alpha=0)] + metric_handles
-            final_labels = scenario_labels + [""] + metrics_to_stack
-            
-            ax.legend(handles=final_handles, labels=final_labels, 
-                      title='Scenario & Components', 
-                      bbox_to_anchor=(1.05, 1), loc='upper left')
+    # B. Metrics (Patterns)
+    metric_handles = []
+    for m_idx, m_name in enumerate(metrics_to_stack):
+        hatch = available_hatches[m_idx % len(available_hatches)]
+        patch = mpatches.Patch(facecolor='white', edgecolor='black', hatch=hatch, label=m_name)
+        metric_handles.append(patch)
+
+    # Combine: No spacers, just list them all.
+    final_handles = scenario_handles + metric_handles
+    
+    # Calculate number of columns to fit them horizontally
+    # We want as many columns as there are items (to be in 1 row), 
+    # but let's cap it at 6 or 8 to allow wrapping if there are too many items.
+    n_items = len(final_handles)
+    n_cols = min(n_items, 8) 
+
+    fig.legend(
+        handles=final_handles, 
+        loc='upper center',          # The point of the legend to anchor...
+        bbox_to_anchor=(0.5, -0.02), # ...to this point (x=center, y=just below bottom)
+        ncol=n_cols,                 # Number of columns (Horizontal layout)
+        frameon=True,
+        borderaxespad=0.5,
+        title="Scenarios (Colors) & Metrics (Patterns)"
+    )
 
     safe_name = "stacked_" + "_".join([m[:4] for m in metrics_to_stack]) + f".{output_format}"
-    plt.suptitle(f"Stacked Sum: {', '.join(metrics_to_stack)}", fontsize=16, y=1.02)
-    plt.tight_layout()
+    plt.suptitle(f"Stacked Sum: {', '.join(metrics_to_stack)}", fontsize=16, y=1.05)
+    
+    # 'bbox_inches="tight"' is CRITICAL here. 
+    # Since the legend is at negative coordinates (outside the plot area),
+    # this ensures the saved image expands to include the legend.
+    plt.savefig(os.path.join(output_folder, safe_name), bbox_inches='tight')
+    plt.close()
+    print(f" -> Saved: {safe_name}")
+
+def generate_stacked_metrics_plot(
+    df: pd.DataFrame, 
+    output_folder: str, 
+    output_format: str, 
+    metrics_to_stack: list[str],
+    y_log: bool = False,
+    show_pct_diff: bool = True,
+    width: int = 6,
+    height: int = 8,
+):
+    """
+    Generates a stacked bar chart.
+    Fixes the legend by manually creating handles for both Colors (Scenarios) and Patterns (Metrics).
+    """
+    if df.empty:
+        print("DataFrame is empty. Skipping plot generation.")
+        return
+
+    # 1. Validation
+    missing = [m for m in metrics_to_stack if m not in df.columns]
+    if missing:
+        print(f"Error: The following columns are missing: {missing}")
+        return
+
+    os.makedirs(output_folder, exist_ok=True)
+    print(f"Generating stacked plot for {metrics_to_stack} in '{output_folder}'...")
+
+    # 2. Data Preparation
+    df_temp = df.copy()
+    cumulative_cols = []
+    current_sum_col = None
+
+    for i, metric in enumerate(metrics_to_stack):
+        new_col_name = f"__cum_{i}_{metric}"
+        if current_sum_col is None:
+            df_temp[new_col_name] = df_temp[metric]
+        else:
+            df_temp[new_col_name] = df_temp[current_sum_col] + df_temp[metric]
+        cumulative_cols.append(new_col_name)
+        current_sum_col = new_col_name
+
+    available_hatches = ['', '///', '...', 'xxx', '+++', '|||']
+    
+    # Setup Plot
+    unique_workers = sorted(df['n_workers'].unique())
+    n_subplots = len(unique_workers)
+    sns.set_theme(style="whitegrid")
+    
+    fig, axes = plt.subplots(
+        nrows=1, 
+        ncols=n_subplots, 
+        figsize=(width * n_subplots, height), 
+        sharey=False, 
+        constrained_layout=True
+    )
+    
+    if n_subplots == 1: axes = [axes]
+
+    # --- Prepare Colors Manually ---
+    # We define the palette here so we can use it for both plotting and the legend
+    unique_scenarios = sorted(df['scenario'].unique())
+    # You can change "viridis" to any other palette (e.g., "deep", "muted", "Set2")
+    palette_colors = sns.color_palette("viridis", n_colors=len(unique_scenarios))
+    scenario_color_map = dict(zip(unique_scenarios, palette_colors))
+
+    for i, worker_count in enumerate(unique_workers):
+        ax = axes[i]
+        
+        subplot_data = df_temp[df_temp['n_workers'] == worker_count].sort_values(by=['n_primes', 'scenario'])
+        
+        if subplot_data.empty: continue
+
+        # 3. Plotting Loop
+        for idx in range(len(cumulative_cols) - 1, -1, -1):
+            col_name = cumulative_cols[idx]
+            hatch_pattern = available_hatches[idx % len(available_hatches)]
+            
+            sns.barplot(
+                data=subplot_data,
+                x='n_primes',
+                y=col_name,
+                hue='scenario',
+                palette=scenario_color_map, # Use the manual map ensures consistency
+                ax=ax,
+                dodge=True,
+                hatch=hatch_pattern,
+                edgecolor='black',
+                linewidth=0.5,
+                alpha=1.0,
+                legend=False 
+            )
+
+        # 4. Annotations (PCT Diff)
+        if show_pct_diff:
+            max_y_limit = 0
+            bar_tops = {} 
+            
+            for p in ax.patches:
+                h = p.get_height()
+                if pd.isna(h) or h <= 0: continue
+                mx = p.get_x() + p.get_width() / 2.
+                x_idx = int(round(mx))
+                key = (x_idx, round(mx, 3))
+                
+                if key not in bar_tops: bar_tops[key] = h
+                else: 
+                    if h > bar_tops[key]: bar_tops[key] = h
+
+            group_baselines = {}
+            for (x_idx, mx), h in bar_tops.items():
+                if x_idx not in group_baselines: group_baselines[x_idx] = h
+                else: 
+                    if h < group_baselines[x_idx]: group_baselines[x_idx] = h
+
+            for (x_idx, mx), h in bar_tops.items():
+                if x_idx in group_baselines:
+                    baseline = group_baselines[x_idx]
+                    if h > (baseline + 0.0001):
+                        pct_diff = ((h - baseline) / baseline) * 100
+                        label_text = f"+{pct_diff:.1f}%"
+                        text_y = h
+                        max_y_limit = max(max_y_limit, text_y)
+                        ax.annotate(label_text, (mx, text_y), ha='center', va='bottom', xytext=(0, 5), textcoords='offset points', fontsize=9, color="black", weight="bold")
+            
+            if max_y_limit > 0:
+                 mult = 1.5 if y_log else 1.15
+                 ax.set_ylim(top=max_y_limit * mult)
+
+        # 5. Formatting
+        if y_log: ax.set_yscale('log')
+        ax.set_title(f"Workers: {worker_count}", fontsize=14)
+        ax.set_xlabel("Number of Primes", fontsize=11)
+        if i == 0: ax.set_ylabel("Stacked Metric Sum", fontsize=12)
+        else: ax.set_ylabel("")
+
+    # --- 6. MANUAL UNIFIED LEGEND ---
+    # Instead of extracting from the plot, we build it from our data.
+    
+    # A. Create handles for Scenarios (Colors)
+    scenario_handles = []
+    for sc_name, sc_color in scenario_color_map.items():
+        # Create a solid patch with the specific color
+        patch = mpatches.Patch(facecolor=sc_color, edgecolor='black', label=sc_name)
+        scenario_handles.append(patch)
+
+    # B. Create handles for Metrics (Patterns)
+    metric_handles = []
+    for m_idx, m_name in enumerate(metrics_to_stack):
+        hatch = available_hatches[m_idx % len(available_hatches)]
+        # White background, black pattern
+        patch = mpatches.Patch(facecolor='white', edgecolor='black', hatch=hatch, label=m_name)
+        metric_handles.append(patch)
+
+    # C. Combine: Scenarios first, then a spacer, then Metrics
+    # We add a generic label for the sections
+    final_handles = (
+        [mpatches.Patch(alpha=0, label="Scenarios")] + 
+        scenario_handles + 
+        [mpatches.Patch(alpha=0, label="")] + # Empty spacer
+        [mpatches.Patch(alpha=0, label="Metrics")] + 
+        metric_handles
+    )
+
+    fig.legend(
+        handles=final_handles, 
+        loc='center left', 
+        bbox_to_anchor=(1.0, 0.5),
+        frameon=True,
+        title="Legend"
+    )
+
+    safe_name = "stacked_" + "_".join([m[:4] for m in metrics_to_stack]) + f".{output_format}"
+    plt.suptitle(f"Stacked Sum: {', '.join(metrics_to_stack)}", fontsize=16, y=1.05)
+    
     plt.savefig(os.path.join(output_folder, safe_name), bbox_inches='tight')
     plt.close()
     print(f" -> Saved: {safe_name}")
@@ -629,6 +747,178 @@ def generate_plots_by_worker(df: pd.DataFrame, output_folder: str, output_format
         
         print(f" -> Saved: {safe_filename}")
 
+def generate_plots_by_worker_horizontal_legend(df: pd.DataFrame, output_folder: str, output_format: str, y_log: bool = False, show_pct_diff: bool = True, width: int = 6, height: int = 8):
+    """
+    Generates bar charts for every numeric metric using subplots.
+    
+    Fix implemented:
+    - Calculates the baseline strictly from the PLOTTED bars (visual mean).
+    - Places the legend horizontally at the bottom of the figure.
+    """
+    if df.empty:
+        print("DataFrame is empty. Skipping plot generation.")
+        return
+
+    os.makedirs(output_folder, exist_ok=True)
+    print(f"Generating plots in '{output_folder}' (Annotations: {show_pct_diff})...")
+
+    # 1. Setup Columns
+    config_cols = ['n_workers', 'n_primes', 'n_iterations', 'scenario', 'configuration_label']
+    metric_cols = [c for c in df.columns if c not in config_cols and pd.api.types.is_numeric_dtype(df[c])]
+
+    unique_workers = sorted(df['n_workers'].unique())
+    n_subplots = len(unique_workers)
+    
+    sns.set_theme(style="whitegrid")
+
+    for metric in metric_cols:
+        # Dynamic figure size
+        # Removed constrained_layout=True to allow manual adjustment for the bottom legend
+        fig, axes = plt.subplots(nrows=1, ncols=n_subplots, figsize=(width * n_subplots, height), sharey=False)
+        
+        if n_subplots == 1:
+            axes = [axes]
+
+        # Variables to store legend handles and labels
+        handles, labels = None, None
+
+        for i, worker_count in enumerate(unique_workers):
+            ax = axes[i]
+            
+            # Filter Data
+            subplot_data = df[df['n_workers'] == worker_count].sort_values(by=['n_primes', 'scenario'])
+
+            if subplot_data.empty:
+                continue
+
+            # Create Bar Plot
+            sns.barplot(
+                data=subplot_data,
+                x='n_primes',
+                y=metric,
+                hue='scenario',
+                palette='viridis',
+                ax=ax
+            )
+
+            if y_log:
+                ax.set_yscale('log')
+
+            ax.set_title(f"Workers: {worker_count}", fontsize=14)
+            ax.set_xlabel("Number of Primes", fontsize=11)
+            
+            if i == 0:
+                ax.set_ylabel(metric, fontsize=12)
+            else:
+                ax.set_ylabel("")
+
+            # =========================================================
+            # ANNOTATION LOGIC (Two-Pass Approach)
+            # =========================================================
+            if show_pct_diff:
+                max_y_limit = 0 
+                
+                error_bar_tops = {} 
+                group_visual_min = {} 
+
+                # A. Get Error Bar Tops
+                for line in ax.lines:
+                    x_data = line.get_xdata()
+                    y_data = line.get_ydata()
+                    if len(x_data) > 0:
+                        x_pos = x_data[0]
+                        y_max = max(y_data)
+                        error_bar_tops[round(x_pos, 4)] = y_max
+
+                # B. Find the Minimum Bar Height per X-Group strictly from the patches
+                for p in ax.patches:
+                    h = p.get_height()
+                    if pd.isna(h) or h <= 0:
+                        continue
+                    x_idx = int(round(p.get_x() + p.get_width() / 2.))
+                    
+                    if x_idx not in group_visual_min:
+                        group_visual_min[x_idx] = h
+                    else:
+                        if h < group_visual_min[x_idx]:
+                            group_visual_min[x_idx] = h
+
+                # --- PASS 2: Annotate based on Visual Baselines ---
+                for p in ax.patches:
+                    bar_height = p.get_height()
+                    
+                    if pd.isna(bar_height) or bar_height <= 0:
+                        continue
+
+                    bar_x = p.get_x() + p.get_width() / 2.
+                    x_idx = int(round(bar_x))
+                    
+                    text_y_anchor = bar_height
+                    if round(bar_x, 4) in error_bar_tops:
+                        error_top = error_bar_tops[round(bar_x, 4)]
+                        if error_top > text_y_anchor:
+                            text_y_anchor = error_top
+                    
+                    max_y_limit = max(max_y_limit, text_y_anchor)
+
+                    if x_idx in group_visual_min:
+                        baseline = group_visual_min[x_idx]
+                        if bar_height > (baseline + 0.0001):
+                            pct_diff = ((bar_height - baseline) / baseline) * 100
+                            label_text = f"+{pct_diff:.1f}%"
+                            
+                            ax.annotate(
+                                label_text,
+                                (bar_x, text_y_anchor),
+                                ha='center', 
+                                va='bottom', 
+                                xytext=(0, 5),
+                                textcoords='offset points',
+                                fontsize=9,
+                                color="black",
+                                weight="normal"
+                            )
+
+                if max_y_limit > 0:
+                    ax.set_ylim(top=max_y_limit * 1.15)
+                
+            # =========================================================
+            # LEGEND EXTRACTION
+            # =========================================================
+            # Capture handles/labels from the first plot, then remove axis-level legend
+            if ax.get_legend():
+                if handles is None:
+                    handles, labels = ax.get_legend_handles_labels()
+                ax.get_legend().remove()
+
+        # =========================================================
+        # GLOBAL LEGEND (Bottom Horizontal)
+        # =========================================================
+        if handles and labels:
+            # ncol=len(labels) forces all items into a single row
+            fig.legend(
+                handles, 
+                labels, 
+                loc='lower center', 
+                bbox_to_anchor=(0.5, -0.1), # Adjust Y to move up/down
+                ncol=len(labels),
+                frameon=False,
+                fontsize=11
+            )
+
+        plt.suptitle(f"Metric Comparison: {metric}", fontsize=16, y=0.98)
+        
+        # Adjust layout to make room for the legend at the bottom
+        plt.tight_layout()
+        plt.subplots_adjust(bottom=0.15) # Reserve bottom 15% for legend
+        
+        safe_filename = "".join([c if c.isalnum() else "_" for c in metric]) + f".{output_format}"
+        save_path = os.path.join(output_folder, safe_filename)
+        plt.savefig(save_path, bbox_inches='tight')
+        plt.close()
+        
+        print(f" -> Saved: {safe_filename}")
+
 def generate_time_split_plot(
     df: pd.DataFrame, 
     output_folder: str, 
@@ -820,6 +1110,225 @@ def generate_time_split_plot(
 
     plt.suptitle(f"Time Composition: CPU vs Other ({total_time_col})", fontsize=16, y=1.02)
     plt.tight_layout()
+    
+    safe_filename = "time_composition_split." + output_format
+    save_path = os.path.join(output_folder, safe_filename)
+    plt.savefig(save_path, bbox_inches='tight')
+    plt.close()
+    
+    print(f" -> Saved: {safe_filename}")
+
+def generate_time_split_plot_horizontal_legend(
+    df: pd.DataFrame, 
+    output_folder: str, 
+    output_format: str, 
+    total_time_col: str,
+    cpu_time_col: str,
+    y_log: bool = False,
+    show_pct_diff: bool = True,
+    width: int = 6,
+    height: int = 8
+):
+    """
+    Generates a single plot file focusing ONLY on the time composition.
+    
+    Fix implemented:
+    - Places the complex legend (Scenarios + CPU/Other explanation) 
+      horizontally at the bottom.
+    """
+    if df.empty:
+        print("DataFrame is empty. Skipping plot generation.")
+        return
+
+    # Validate columns exist
+    if total_time_col not in df.columns or cpu_time_col not in df.columns:
+        print(f"Error: Columns '{total_time_col}' or '{cpu_time_col}' not found in DataFrame.")
+        return
+
+    os.makedirs(output_folder, exist_ok=True)
+    print(f"Generating time split plot in '{output_folder}' (Log Scale: {y_log})...")
+
+    # Setup
+    unique_workers = sorted(df['n_workers'].unique())
+    n_subplots = len(unique_workers)
+    
+    sns.set_theme(style="whitegrid")
+
+    # Dynamic figure size
+    # Removed constrained_layout=True to allow manual bottom margin adjustment
+    fig, axes = plt.subplots(nrows=1, ncols=n_subplots, figsize=(width * n_subplots, height), sharey=False)
+    
+    if n_subplots == 1:
+        axes = [axes]
+
+    # Store handles/labels for the global legend
+    scenario_handles = []
+    scenario_labels = []
+
+    for i, worker_count in enumerate(unique_workers):
+        ax = axes[i]
+        
+        # Filter Data
+        subplot_data = df[df['n_workers'] == worker_count].sort_values(by=['n_primes', 'scenario'])
+
+        if subplot_data.empty:
+            continue
+
+        # =========================================================
+        # PLOT LAYER 1: TOTAL TIME (The container)
+        # =========================================================
+        plot_total = sns.barplot(
+            data=subplot_data,
+            x='n_primes',
+            y=total_time_col,
+            hue='scenario',
+            palette='viridis',
+            alpha=0.4,          # Semi-transparent
+            ax=ax,
+            dodge=True,
+            edgecolor=None
+        )
+
+        # Capture legend handles/labels ONLY from the first subplot
+        if i == 0:
+            h, l = ax.get_legend_handles_labels()
+            scenario_handles = h
+            scenario_labels = l
+
+        # =========================================================
+        # ANNOTATION LOGIC (Calculated on Total Time)
+        # =========================================================
+        max_y_limit = 0 
+        
+        if show_pct_diff:
+            # --- PASS 1: Find Visual Baselines ---
+            error_bar_tops = {} 
+            group_visual_min = {} 
+
+            # Map Error Bars
+            for line in ax.lines:
+                x_data = line.get_xdata()
+                y_data = line.get_ydata()
+                if len(x_data) > 0:
+                    x_pos = x_data[0]
+                    y_max = max(y_data)
+                    error_bar_tops[round(x_pos, 4)] = y_max
+
+            # Find Min Height (Total Time Baseline)
+            for p in ax.patches:
+                h = p.get_height()
+                if pd.isna(h) or h <= 0: continue
+                x_idx = int(round(p.get_x() + p.get_width() / 2.))
+                
+                if x_idx not in group_visual_min:
+                    group_visual_min[x_idx] = h
+                else:
+                    if h < group_visual_min[x_idx]:
+                        group_visual_min[x_idx] = h
+
+            # --- PASS 2: Annotate ---
+            for p in ax.patches:
+                bar_height = p.get_height()
+                if pd.isna(bar_height) or bar_height <= 0: continue
+
+                bar_x = p.get_x() + p.get_width() / 2.
+                x_idx = int(round(bar_x))
+                
+                # Determine Y anchor for text
+                text_y_anchor = bar_height
+                if round(bar_x, 4) in error_bar_tops:
+                    error_top = error_bar_tops[round(bar_x, 4)]
+                    if error_top > text_y_anchor:
+                        text_y_anchor = error_top
+                
+                max_y_limit = max(max_y_limit, text_y_anchor)
+
+                # Compare
+                if x_idx in group_visual_min:
+                    baseline = group_visual_min[x_idx]
+                    if bar_height > (baseline + 0.0001):
+                        pct_diff = ((bar_height - baseline) / baseline) * 100
+                        label_text = f"+{pct_diff:.1f}%"
+                        
+                        ax.annotate(
+                            label_text,
+                            (bar_x, text_y_anchor),
+                            ha='center', va='bottom', 
+                            xytext=(0, 5), textcoords='offset points',
+                            fontsize=9, color="black", weight="bold"
+                        )
+
+        # =========================================================
+        # PLOT LAYER 2: CPU TIME (The core component)
+        # =========================================================
+        sns.barplot(
+            data=subplot_data,
+            x='n_primes',
+            y=cpu_time_col,
+            hue='scenario',
+            palette='viridis',
+            alpha=1.0,          # Solid color
+            ax=ax,
+            dodge=True,
+            legend=False        # No duplicate legend
+        )
+        
+        # Add a black border to the CPU bars
+        n_bars = len(subplot_data)
+        for patch in ax.patches[-n_bars:]:
+            patch.set_edgecolor('black')
+            patch.set_linewidth(1.0)
+
+        # --- Formatting ---
+        if y_log:
+            ax.set_yscale('log')
+
+        ax.set_title(f"Workers: {worker_count}", fontsize=14)
+        ax.set_xlabel("Number of Primes", fontsize=11)
+        
+        if i == 0:
+            ax.set_ylabel("Time (seconds)", fontsize=12)
+        else:
+            ax.set_ylabel("")
+            
+        if max_y_limit > 0 and show_pct_diff:
+            mult = 1.5 if y_log else 1.15
+            ax.set_ylim(top=max_y_limit * mult)
+            
+        # Clean up individual legends
+        if ax.get_legend():
+            ax.get_legend().remove()
+
+    # =========================================================
+    # GLOBAL LEGEND CONSTRUCTION (Bottom Horizontal)
+    # =========================================================
+    # Create explanatory proxy artists for the custom legend
+    solid_patch = mpatches.Patch(facecolor='gray', edgecolor='black', label='CPU Time')
+    faded_patch = mpatches.Patch(facecolor='gray', alpha=0.4, label='Other/Wait Time')
+    
+    # Combine Scenario items + Spacer + Explanation items
+    # Spacer is an invisible patch to create a gap between scenarios and definitions
+    spacer = mpatches.Patch(alpha=0, label="")
+    
+    final_handles = scenario_handles + [spacer] + [solid_patch, faded_patch]
+    final_labels = scenario_labels + [""] + ["CPU Time (Solid)", "Other Time (Faded)"]
+    
+    # Place legend at bottom
+    fig.legend(
+        handles=final_handles, 
+        labels=final_labels, 
+        loc='lower center', 
+        bbox_to_anchor=(0.5, -0.1),
+        ncol=len(final_labels), # Force single row
+        frameon=False,
+        fontsize=11
+    )
+
+    plt.suptitle(f"Time Composition: CPU vs Other ({total_time_col})", fontsize=16, y=0.98)
+    
+    # Adjust layout to accommodate the bottom legend
+    plt.tight_layout()
+    plt.subplots_adjust(bottom=0.15)
     
     safe_filename = "time_composition_split." + output_format
     save_path = os.path.join(output_folder, safe_filename)
@@ -1249,17 +1758,17 @@ def main():
 
     print(df_experiments.columns)
 
-    generate_time_split_plot(df_experiments, os.path.join(args.output_dir, "by_worker_total_cpu_time"), args.output_format, 
+    generate_time_split_plot_horizontal_legend(df_experiments, os.path.join(args.output_dir, "by_worker_total_cpu_time"), args.output_format, 
                              y_log=True, show_pct_diff=args.show_pct_diff, total_time_col="Total Execution Time (s)", cpu_time_col="Total CPU Time (s)",
                              width=args.width, height=args.height)
     
-    generate_stacked_metrics_plot(df_experiments, os.path.join(args.output_dir, "networking"), args.output_format, 
+    generate_stacked_metrics_plot_horizontal_legend(df_experiments, os.path.join(args.output_dir, "networking"), args.output_format, 
                              y_log=True, show_pct_diff=args.show_pct_diff, metrics_to_stack=["Total Data Sent (Bytes)", "Total Data Received (Bytes)"],
                              width=args.width, height=args.height)
     
-    generate_plots_by_worker(df_experiments, os.path.join(args.output_dir, "by_worker"), args.output_format, y_log=False, show_pct_diff=args.show_pct_diff, width=args.width, height=args.height)
+    generate_plots_by_worker_horizontal_legend(df_experiments, os.path.join(args.output_dir, "by_worker"), args.output_format, y_log=False, show_pct_diff=args.show_pct_diff, width=args.width, height=args.height)
 
-    generate_plots_by_worker(df_experiments, os.path.join(args.output_dir, "by_worker_log"), args.output_format, y_log=True, show_pct_diff=args.show_pct_diff, width=args.width, height=args.height)
+    generate_plots_by_worker_horizontal_legend(df_experiments, os.path.join(args.output_dir, "by_worker_log"), args.output_format, y_log=True, show_pct_diff=args.show_pct_diff, width=args.width, height=args.height)
 
     # generate_plots_by_primes(df_experiments, os.path.join(args.output_dir, "by_primes"), args.output_format, y_log=True, show_pct_diff=False)
 

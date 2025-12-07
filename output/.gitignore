@@ -1,2 +1,5 @@
 *.json
 *.png
+*.pstat
+*.log
+*.dat

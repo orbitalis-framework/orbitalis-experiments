@@ -2,3 +2,4 @@ orbitalis==1.1.4
 aiomqtt
 requests
 tqdm
+yappi
